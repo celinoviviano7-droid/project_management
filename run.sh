@@ -48,4 +48,4 @@ $JAVAC -encoding UTF-8 -d "$OUT_DIR" @/tmp/gp3_sources.txt
 echo -e "${GREEN}[✓] Compilation réussie${NC}"
 echo -e "${CYAN}[...] Démarrage de GestionPro...${NC}"
 echo ""
-java -Dawt.useSystemAAFontSettings=on -Dswing.aatext=true -cp "$OUT_DIR" gestion.Main
+java -Dawt.useSystemAAFontSettings=on -Dswing.aatext=true -cp "$OUT_DIR:$SCRIPT_DIR" gestion.Main

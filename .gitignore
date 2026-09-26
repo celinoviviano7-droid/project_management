@@ -1,0 +1,14 @@
+out/
+*.class
+.idea/
+*.jar
+
+out/
+*.class
+*.jar
+*.zip
+*.tar.gz
+*.db
+*.sqlite
+.idea/
+.gradle/
