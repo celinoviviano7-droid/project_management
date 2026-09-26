@@ -5,9 +5,27 @@ import javax.swing.border.*;
 import java.awt.*;
 import java.awt.event.*;
 import java.awt.geom.*;
+import com.formdev.flatlaf.extras.FlatSVGIcon;
 
 public final class Widgets {
     private Widgets() {}
+
+    /**
+     * Crée un FlatSVGIcon en injectant le ClassLoader de Widgets.
+     * Cela fonctionne à la fois en développement et dans un Fat JAR.
+     * @param iconPath chemin absolu de l'icône (ex: "/resources/icons/plus.svg")
+     */
+    public static FlatSVGIcon svg(String iconPath) {
+        // ClassLoader.getResource() ne prend PAS de slash initial
+        String path = iconPath.startsWith("/") ? iconPath.substring(1) : iconPath;
+        return new FlatSVGIcon(path, 1.0f, Widgets.class.getClassLoader());
+    }
+
+    public static FlatSVGIcon svg(String iconPath, int w, int h) {
+        String path = iconPath.startsWith("/") ? iconPath.substring(1) : iconPath;
+        float scale = (float) w / 16.0f;
+        return new FlatSVGIcon(path, scale, Widgets.class.getClassLoader());
+    }
 
     // ════════════════════════════════════════════════════════
     //  Panneau coins arrondis
@@ -72,6 +90,14 @@ public final class Widgets {
             g2.setColor(getBackground()); g2.fillRoundRect(0,0,getWidth(),getHeight(),Theme.R_SM,Theme.R_SM);
             if (isOutline) { g2.setColor(outlineColor); g2.setStroke(new BasicStroke(1.2f)); g2.drawRoundRect(0,0,getWidth()-1,getHeight()-1,Theme.R_SM,Theme.R_SM); }
             g2.dispose(); super.paintComponent(g);
+        }
+
+        public static FlatButton icon(com.formdev.flatlaf.extras.FlatSVGIcon icon) {
+            FlatButton b = new FlatButton(null, new Color(0,0,0,0));
+            b.setIcon(icon);
+            b.setBorder(new EmptyBorder(4, 4, 4, 4));
+            b.hoverBg = new Color(255,255,255,15);
+            return b;
         }
 
         private static Color blend(Color a, Color b, float t) {
@@ -236,8 +262,12 @@ public final class Widgets {
         JScrollPane sp=new JScrollPane(c);
         sp.setBorder(null);
         sp.getViewport().setBackground(Theme.BG_PANEL);
-        sp.getVerticalScrollBar().setPreferredSize(new Dimension(5,0));
-        sp.getHorizontalScrollBar().setPreferredSize(new Dimension(0,5));
+        // Des barres plus larges (11px) pour être facilement cliquables
+        sp.getVerticalScrollBar().setPreferredSize(new Dimension(11,0));
+        sp.getHorizontalScrollBar().setPreferredSize(new Dimension(0,11));
+        // Vitesse de défilement améliorée (molette de souris fluide)
+        sp.getVerticalScrollBar().setUnitIncrement(16);
+        sp.getHorizontalScrollBar().setUnitIncrement(16);
         return sp;
     }
 
@@ -266,13 +296,229 @@ public final class Widgets {
         JTextField tf=new JTextField();
         Theme.applyTextField(tf);
         if (!placeholder.isEmpty()) {
-            tf.setForeground(Theme.TEXT_MUTED);
-            tf.setText(placeholder);
-            tf.addFocusListener(new FocusAdapter(){
-                boolean first=true;
-                public void focusGained(FocusEvent e){ if(first){tf.setText("");tf.setForeground(Theme.TEXT_PRIMARY);first=false;} }
-            });
+            tf.putClientProperty("JTextField.placeholderText", placeholder);
         }
         return tf;
+    }
+ 
+    public static JTextField searchField(String placeholder, java.util.function.Consumer<String> onSearch) {
+        JTextField tf = new JTextField();
+        tf.putClientProperty("JTextField.placeholderText", placeholder);
+        tf.putClientProperty("JTextField.showClearButton", true);
+        FlatSVGIcon icon = svg("/resources/icons/search.svg", 13, 13);
+        icon.setColorFilter(new FlatSVGIcon.ColorFilter(color -> Theme.CYAN));
+        tf.putClientProperty("JTextField.leadingIcon", icon);
+        
+        tf.getDocument().addDocumentListener(new javax.swing.event.DocumentListener() {
+            public void insertUpdate(javax.swing.event.DocumentEvent e) { onSearch.accept(tf.getText()); }
+            public void removeUpdate(javax.swing.event.DocumentEvent e) { onSearch.accept(tf.getText()); }
+            public void changedUpdate(javax.swing.event.DocumentEvent e) { onSearch.accept(tf.getText()); }
+        });
+        
+        Theme.applyTextField(tf);
+        tf.setPreferredSize(new Dimension(180, 28));
+        return tf;
+    }
+
+    // ════════════════════════════════════════════════════════
+    //  WrapLayout (Layout fluid qui passe à la ligne)
+    // ════════════════════════════════════════════════════════
+    public static class WrapLayout extends FlowLayout {
+        public WrapLayout() { super(FlowLayout.LEFT, 10, 10); }
+        public WrapLayout(int align, int h, int v) { super(align, h, v); }
+        @Override public Dimension preferredLayoutSize(Container t) { return layout(t, true); }
+        @Override public Dimension minimumLayoutSize(Container t) { return layout(t, false); }
+        private Dimension layout(Container t, boolean pref) {
+            synchronized (t.getTreeLock()) {
+                int tw = t.getSize().width;
+                if (tw == 0) tw = Integer.MAX_VALUE;
+                Insets ins = t.getInsets();
+                int max = tw - (ins.left + ins.right + getHgap() * 2);
+                Dimension dim = new Dimension(0, 0);
+                int rw = 0, rh = 0;
+                for (int i = 0; i < t.getComponentCount(); i++) {
+                    Component c = t.getComponent(i);
+                    if (!c.isVisible()) continue;
+                    Dimension d = pref ? c.getPreferredSize() : c.getMinimumSize();
+                    if (rw + d.width > max) {
+                        dim.width = Math.max(dim.width, rw);
+                        dim.height += rh + getVgap();
+                        rw = 0; rh = 0;
+                    }
+                    rw += d.width + getHgap();
+                    rh = Math.max(rh, d.height);
+                }
+                dim.width = Math.max(dim.width, rw);
+                dim.height += rh + ins.top + ins.bottom + getVgap() * 2;
+                return dim;
+            }
+        }
+    }
+
+    // ════════════════════════════════════════════════════════
+    //  AdaptivePanel (Change de layout selon la largeur)
+    // ════════════════════════════════════════════════════════
+    public static class AdaptivePanel extends JPanel {
+        private final int breakpoint;
+        private final LayoutManager smallLayout, largeLayout;
+
+        public AdaptivePanel(int breakpoint, LayoutManager small, LayoutManager large) {
+            this.breakpoint = breakpoint;
+            this.smallLayout = small;
+            this.largeLayout = large;
+            setOpaque(false);
+            addComponentListener(new ComponentAdapter() {
+                @Override public void componentResized(ComponentEvent e) { updateLayout(); }
+            });
+        }
+
+        private void updateLayout() {
+            LayoutManager target = getWidth() < breakpoint ? smallLayout : largeLayout;
+            if (getLayout() != target) {
+                setLayout(target);
+                revalidate();
+            }
+        }
+    }
+    // ════════════════════════════════════════════════════════
+    //  DatePicker (Sélecteur de date moderne)
+    // ════════════════════════════════════════════════════════
+    public static class DatePicker extends JPanel {
+        private final JTextField tf;
+        private final JButton btn;
+        private java.time.LocalDate current;
+        private final java.time.format.DateTimeFormatter fmt = java.time.format.DateTimeFormatter.ofPattern("dd/MM/yyyy");
+
+        public DatePicker() { this(java.time.LocalDate.now()); }
+        public DatePicker(java.time.LocalDate initial) {
+            this.current = initial;
+            setLayout(new BorderLayout());
+            setOpaque(false);
+
+            tf = new JTextField(current.format(fmt));
+            Theme.applyTextField(tf);
+            
+            btn = new JButton();
+            btn.setFocusPainted(false); btn.setBorderPainted(false); btn.setContentAreaFilled(false);
+            btn.setCursor(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR));
+            FlatSVGIcon icon = svg("/resources/icons/edit.svg", 14, 14);
+            icon.setColorFilter(new FlatSVGIcon.ColorFilter(c -> Theme.TEXT_SECONDARY));
+            btn.setIcon(icon);
+            btn.setBorder(new EmptyBorder(0, 8, 0, 8));
+
+            btn.addActionListener(e -> showPopup());
+            
+            add(tf, BorderLayout.CENTER);
+            add(btn, BorderLayout.EAST);
+            
+            // Sync manuelle si l'utilisateur tape une date
+            tf.addFocusListener(new FocusAdapter() {
+                @Override public void focusLost(FocusEvent e) {
+                    try { current = java.time.LocalDate.parse(tf.getText().trim(), fmt); } catch(Exception ignored){}
+                }
+            });
+        }
+
+        @Override public void setEnabled(boolean b) {
+            super.setEnabled(b);
+            tf.setEnabled(b);
+            btn.setEnabled(b);
+        }
+
+        public String getText() { return tf.getText().trim(); }
+        public void setText(String t) { tf.setText(t); try { current = java.time.LocalDate.parse(t, fmt); } catch(Exception ignored){} }
+        public java.time.LocalDate getDate() { return current; }
+
+        private void showPopup() {
+            JPopupMenu pop = new JPopupMenu();
+            pop.setBorder(new LineBorder(Theme.BORDER));
+            pop.setBackground(Theme.BG_CARD);
+            pop.add(new CalendarPanel(pop));
+            pop.show(this, 0, getHeight());
+        }
+
+        private class CalendarPanel extends JPanel {
+            private java.time.LocalDate view;
+
+            public CalendarPanel(JPopupMenu pop) {
+                this.view = current;
+                setLayout(new BorderLayout());
+                setBackground(Theme.BG_CARD);
+                build(pop);
+            }
+
+            private void build(JPopupMenu pop) {
+                removeAll();
+                
+                // Header (Mois Année + Nav)
+                JPanel hdr = new JPanel(new BorderLayout());
+                hdr.setOpaque(false);
+                hdr.setBorder(new EmptyBorder(5,5,5,5));
+                
+                JButton prev = navBtn("<"); prev.addActionListener(e -> { view = view.minusMonths(1); build(pop); });
+                JButton next = navBtn(">"); next.addActionListener(e -> { view = view.plusMonths(1); build(pop); });
+                JLabel lbl = new JLabel(view.getMonth().getDisplayName(java.time.format.TextStyle.FULL, java.util.Locale.FRENCH) + " " + view.getYear(), SwingConstants.CENTER);
+                lbl.setFont(Theme.F_BODY); lbl.setForeground(Theme.TEXT_PRIMARY);
+                
+                hdr.add(prev, BorderLayout.WEST);
+                hdr.add(lbl, BorderLayout.CENTER);
+                hdr.add(next, BorderLayout.EAST);
+                add(hdr, BorderLayout.NORTH);
+
+                // Grid
+                JPanel grid = new JPanel(new GridLayout(0, 7));
+                grid.setOpaque(false);
+                grid.setBorder(new EmptyBorder(0,5,5,5));
+                
+                String[] days = {"Lu", "Ma", "Me", "Je", "Ve", "Sa", "Di"};
+                for (String d : days) {
+                    JLabel dl = new JLabel(d, SwingConstants.CENTER);
+                    dl.setFont(Theme.F_LABEL); dl.setForeground(Theme.TEXT_MUTED);
+                    grid.add(dl);
+                }
+
+                java.time.LocalDate first = view.withDayOfMonth(1);
+                int offset = first.getDayOfWeek().getValue() - 1;
+                for (int i = 0; i < offset; i++) grid.add(new JLabel(""));
+                
+                int len = view.lengthOfMonth();
+                for (int i = 1; i <= len; i++) {
+                    int day = i;
+                    JButton db = new JButton(String.valueOf(day));
+                    db.setFont(Theme.F_SMALL); db.setFocusPainted(false);
+                    db.setOpaque(false); db.setContentAreaFilled(false);
+                    db.setBorder(new EmptyBorder(4,4,4,4));
+                    db.setCursor(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR));
+                    
+                    java.time.LocalDate d = view.withDayOfMonth(day);
+                    if (d.equals(current)) {
+                        db.setForeground(Color.WHITE);
+                        db.setBackground(Theme.ACCENT);
+                        db.setOpaque(true);
+                    } else if (d.equals(java.time.LocalDate.now())) {
+                        db.setForeground(Theme.CYAN);
+                    } else {
+                        db.setForeground(Theme.TEXT_PRIMARY);
+                    }
+
+                    db.addActionListener(e -> {
+                        current = d;
+                        tf.setText(current.format(fmt));
+                        pop.setVisible(false);
+                    });
+                    
+                    grid.add(db);
+                }
+                add(grid, BorderLayout.CENTER);
+                revalidate(); repaint();
+            }
+
+            private JButton navBtn(String t) {
+                JButton b = new JButton(t); b.setFocusPainted(false); b.setBorderPainted(false);
+                b.setContentAreaFilled(false); b.setForeground(Theme.TEXT_SECONDARY);
+                b.setCursor(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR));
+                return b;
+            }
+        }
     }
 }

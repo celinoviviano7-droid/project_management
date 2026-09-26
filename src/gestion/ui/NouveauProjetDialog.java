@@ -3,6 +3,7 @@ package gestion.ui;
 import gestion.model.Projet;
 import gestion.util.Theme;
 import gestion.util.Widgets;
+import com.formdev.flatlaf.extras.FlatSVGIcon;
 
 import javax.swing.*;
 import javax.swing.border.*;
@@ -14,7 +15,8 @@ import java.time.format.DateTimeParseException;
 
 public class NouveauProjetDialog extends JDialog {
 
-    private JTextField tfNom, tfResp, tfDebut, tfFin;
+    private JTextField tfNom, tfResp;
+    private Widgets.DatePicker tfDebut, tfFin;
     private JTextArea  taDesc;
     private Projet result;
 
@@ -36,7 +38,10 @@ public class NouveauProjetDialog extends JDialog {
         hdr.setBorder(new CompoundBorder(
             new MatteBorder(0,0,1,0,Theme.BORDER),
             new EmptyBorder(16,20,16,20)));
-        JLabel title = new JLabel("📁  NOUVEAU PROJET");
+        JLabel title = new JLabel("NOUVEAU PROJET");
+        FlatSVGIcon iconP = Widgets.svg("/resources/icons/folder.svg", 16, 16);
+        iconP.setColorFilter(new FlatSVGIcon.ColorFilter(c -> Theme.CYAN));
+        title.setIcon(iconP); title.setIconTextGap(8);
         title.setFont(Theme.F_SUBTITLE); title.setForeground(Theme.TEXT_PRIMARY);
         JLabel sub   = new JLabel("Créez un nouveau projet et son équipe");
         sub.setFont(Theme.F_TINY); sub.setForeground(Theme.TEXT_SECONDARY);
@@ -56,8 +61,8 @@ public class NouveauProjetDialog extends JDialog {
 
         DateTimeFormatter fmt = DateTimeFormatter.ofPattern("dd/MM/yyyy");
         LocalDate now = LocalDate.now();
-        tfDebut = addFieldVal(form, "Date de début *  (dd/MM/yyyy)", now.format(fmt));
-        tfFin   = addFieldVal(form, "Date de fin *    (dd/MM/yyyy)", now.plusDays(90).format(fmt));
+        tfDebut = addDatePicker(form, "Date de début *", now);
+        tfFin   = addDatePicker(form, "Date de fin *",   now.plusDays(90));
 
         JPanel drow = new JPanel(new BorderLayout(0,4)); drow.setOpaque(false);
         drow.setAlignmentX(LEFT_ALIGNMENT); drow.setMaximumSize(new Dimension(Integer.MAX_VALUE,100));
@@ -77,7 +82,10 @@ public class NouveauProjetDialog extends JDialog {
         foot.setBorder(new MatteBorder(1,0,0,0,Theme.BORDER));
         Widgets.FlatButton cancel = new Widgets.FlatButton("Annuler", new Color(48,48,72));
         cancel.addActionListener(e -> dispose());
-        Widgets.FlatButton create = new Widgets.FlatButton("✓  Créer le projet", Theme.ACCENT);
+        Widgets.FlatButton create = new Widgets.FlatButton("Créer le projet", Theme.ACCENT);
+        FlatSVGIcon iconC = Widgets.svg("/resources/icons/check.svg", 14, 14);
+        iconC.setColorFilter(new FlatSVGIcon.ColorFilter(c -> Color.WHITE));
+        create.setIcon(iconC); create.setIconTextGap(6);
         create.addActionListener(e -> handleCreate());
         foot.add(cancel); foot.add(create);
         root.add(foot, BorderLayout.SOUTH);
@@ -116,6 +124,16 @@ public class NouveauProjetDialog extends JDialog {
         row.add(tf, BorderLayout.CENTER);
         p.add(row); p.add(Box.createVerticalStrut(Theme.GAP_SM));
         return tf;
+    }
+
+    private Widgets.DatePicker addDatePicker(JPanel p, String label, LocalDate val) {
+        JPanel row = new JPanel(new BorderLayout(0,4)); row.setOpaque(false);
+        row.setAlignmentX(LEFT_ALIGNMENT); row.setMaximumSize(new Dimension(Integer.MAX_VALUE,58));
+        row.add(lbl(label), BorderLayout.NORTH);
+        Widgets.DatePicker dp = new Widgets.DatePicker(val);
+        row.add(dp, BorderLayout.CENTER);
+        p.add(row); p.add(Box.createVerticalStrut(Theme.GAP_SM));
+        return dp;
     }
 
     private JTextField addFieldVal(JPanel p, String label, String val) {

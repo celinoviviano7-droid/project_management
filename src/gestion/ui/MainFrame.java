@@ -10,8 +10,13 @@ import javax.swing.table.*;
 import java.awt.*;
 import java.awt.event.*;
 import java.awt.image.BufferedImage;
-import java.time.format.DateTimeFormatter;
 import java.util.List;
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.time.LocalDate;
+import java.time.format.DateTimeFormatter;
+import java.time.temporal.ChronoUnit;
+import com.formdev.flatlaf.extras.FlatSVGIcon;
 
 public class MainFrame extends JFrame {
 
@@ -21,12 +26,29 @@ public class MainFrame extends JFrame {
     private static final String V_TEAM = "equipe";
     private static final String V_JALON = "jalons";
 
-    private final ProjetService service = new ProjetService();
+    private static final String ROOT_BACKSTAGE = "BACKSTAGE";
+    private static final String ROOT_WORKSPACE = "WORKSPACE";
+    private boolean isRefreshingList = false;
+    private boolean sidebarCollapsed = true;
+    private JDialog detailDialog;
+    private String searchQueryTaches = "";
+    private JPanel sidebarPanel, navSectionProjets, footPanel, userInfoPanel;
+    private JLabel lblLogoText;
+    private List<NavBtn> navButtons = new ArrayList<>();
+    private JButton btnToggle;
+    private Widgets.FlatButton btnNew;
     private Projet selectedProjet;
+    private ProjetService service = new ProjetService();
+
+    // ── Root Layout ──────────────────────────────────────────
+    private CardLayout rootLayout;
+    private JPanel rootPanel;
+    private BackstagePanel backstage;
+    private JPanel workspacePanel;
 
     // ── Layout central ────────────────────────────────────────
-    private CardLayout cardLayout;
-    private JPanel mainContent;
+    private CardLayout cardLayout, taskCardLayout;
+    private JPanel mainContent, taskContent;
 
     // ── Panels ────────────────────────────────────────────────
     private DashboardPanel dashboard;
@@ -55,50 +77,90 @@ public class MainFrame extends JFrame {
     public MainFrame() {
         Toast.init(this);
         initFrame();
-        buildUI();
+        
+        // 1. Initialiser le Hub Backstage
+        backstage = new BackstagePanel(service, this);
+        
+        // 2. Initialiser l'Espace de Travail
+        workspacePanel = buildWorkspaceUI();
+        
+        // 3. Root Switcher
+        rootLayout = new CardLayout();
+        rootPanel = new JPanel(rootLayout);
+        rootPanel.add(backstage, ROOT_BACKSTAGE);
+        rootPanel.add(workspacePanel, ROOT_WORKSPACE);
+        
+        setLayout(new BorderLayout());
+        add(rootPanel, BorderLayout.CENTER);
+
         loadProjets();
-        if (!service.getProjets().isEmpty())
-            projetList.setSelectedIndex(0);
+        showBackstage();
+    }
+
+    public void showBackstage() {
+        rootLayout.show(rootPanel, ROOT_BACKSTAGE);
+        backstage.refresh();
+        setTitle("Tantagna tetikasa - Accueil");
+    }
+
+    public void openProjet(Projet p) {
+        if (p == null) {
+            newProjet();
+            return;
+        }
+        onSelectProjet(p);
+        rootLayout.show(rootPanel, ROOT_WORKSPACE);
         navigate(V_DASH);
+        setTitle("Tantagna tetikasa - " + p.getNom());
     }
 
     // ─────────────────────────────────────────────────────────
     // Init & Layout
     // ─────────────────────────────────────────────────────────
     private void initFrame() {
-        setTitle("GestionPro — Gestion de Projet Professionnelle");
+        setTitle("Gestion de Projet Professionnelle");
         setDefaultCloseOperation(EXIT_ON_CLOSE);
         setSize(1440, 880);
         setMinimumSize(new Dimension(1050, 680));
         setLocationRelativeTo(null);
         setIconImages(buildIcons());
-        try {
-            UIManager.setLookAndFeel(UIManager.getSystemLookAndFeelClassName());
-        } catch (Exception ignored) {
-        }
     }
 
     private java.util.List<Image> buildIcons() {
-        Image base = new ImageIcon(getClass().getResource("/img/Gemini_Generated_Image_ubpqkiubpqkiubpq.png")).getImage();
         java.util.List<Image> icons = new java.util.ArrayList<>();
-        for (int size : new int[] { 16, 32, 64, 128, 256, 512 }) {
-            BufferedImage scaled = new BufferedImage(size, size, BufferedImage.TYPE_INT_ARGB);
-            Graphics2D g2 = scaled.createGraphics();
-            g2.setRenderingHint(RenderingHints.KEY_INTERPOLATION, RenderingHints.VALUE_INTERPOLATION_BILINEAR);
-            g2.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
-            g2.drawImage(base, 0, 0, size, size, null);
-            g2.dispose();
-            icons.add(scaled);
+        try {
+            java.net.URL resource = getClass().getResource("/img/Gemini_Generated_Image_ubpqkiubpqkiubpq.png");
+            if (resource == null) {
+                java.io.File file = new java.io.File("img/Gemini_Generated_Image_ubpqkiubpqkiubpq.png");
+                if (file.exists()) {
+                    resource = file.toURI().toURL();
+                }
+            }
+            if (resource != null) {
+                Image base = new ImageIcon(resource).getImage();
+                for (int size : new int[] { 16, 32, 64, 128, 256, 512 }) {
+                    BufferedImage scaled = new BufferedImage(size, size, BufferedImage.TYPE_INT_ARGB);
+                    Graphics2D g2 = scaled.createGraphics();
+                    g2.setRenderingHint(RenderingHints.KEY_INTERPOLATION, RenderingHints.VALUE_INTERPOLATION_BILINEAR);
+                    g2.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
+                    g2.drawImage(base, 0, 0, size, size, null);
+                    g2.dispose();
+                    icons.add(scaled);
+                }
+            }
+        } catch (Exception e) {
+            System.err.println("[MainFrame] Erreur chargement icônes : " + e.getMessage());
         }
         return icons;
     }
 
-    private void buildUI() {
-        setLayout(new BorderLayout(0, 0));
-        getContentPane().setBackground(Theme.BG_APP);
-        add(buildTopBar(), BorderLayout.NORTH);
-        add(buildSidebar(), BorderLayout.WEST);
-        add(buildCenter(), BorderLayout.CENTER);
+    private JPanel buildWorkspaceUI() {
+        JPanel wp = new JPanel(new BorderLayout(0, 0));
+        wp.setBackground(Theme.BG_APP);
+        wp.add(buildTopBar(), BorderLayout.NORTH);
+        wp.add(buildSidebar(), BorderLayout.WEST);
+        wp.add(buildCenter(), BorderLayout.CENTER);
+        return wp;
     }
 
     // ─────────────────────────────────────────────────────────
@@ -110,36 +172,24 @@ public class MainFrame extends JFrame {
         bar.setBorder(new MatteBorder(0, 0, 1, 0, Theme.BORDER));
         bar.setPreferredSize(new Dimension(0, 52));
 
-        // Gauche : logo + breadcrumb
+        // Gauche : Bouton Retour + Breadcrumb
         JPanel left = new JPanel(new FlowLayout(FlowLayout.LEFT, 0, 0));
         left.setBackground(Theme.BG_TOPBAR);
+        
+        left.add(Box.createHorizontalStrut(Theme.GAP_MD));
 
-        JPanel logoZone = new JPanel(new FlowLayout(FlowLayout.CENTER, 10, 0));
-        logoZone.setBackground(new Color(7, 7, 16));
-        logoZone.setPreferredSize(new Dimension(218, 52));
-        logoZone.setBorder(new MatteBorder(0, 0, 0, 1, Theme.BORDER));
-
-        JLabel logo = new JLabel() {
-            private Image logoImg = new ImageIcon(getClass().getResource("/img/Gemini_Generated_Image_ubpqkiubpqkiubpq.png")).getImage();
-
-            @Override
-            protected void paintComponent(Graphics g) {
-                Graphics2D g2 = (Graphics2D) g.create();
-                g2.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
-                g2.drawImage(logoImg, 0, 0, 40, 40, null);
-                g2.setColor(Theme.TEXT_PRIMARY);
-                g2.setFont(Theme.font(Font.BOLD, 18));
-                g2.drawString("GestionPro", 48, 26);
-                g2.dispose();
-            }
-        };
-        logo.setPreferredSize(new Dimension(170, 40));
-        logoZone.add(logo);
-        left.add(logoZone);
+        // Bouton Retour au Hub
+        FlatSVGIcon homeIcon = Widgets.svg("/resources/icons/home.svg", 16, 16);
+        homeIcon.setColorFilter(new FlatSVGIcon.ColorFilter(c -> Theme.TEXT_SECONDARY));
+        Widgets.FlatButton btnHome = Widgets.FlatButton.icon(homeIcon);
+        btnHome.setToolTipText("Retour à l'accueil");
+        btnHome.addActionListener(e -> showBackstage());
+        left.add(btnHome);
+        left.add(Box.createHorizontalStrut(Theme.GAP_SM));
 
         JPanel bread = new JPanel(new FlowLayout(FlowLayout.LEFT, Theme.GAP_MD, 0));
         bread.setBackground(Theme.BG_TOPBAR);
-        lblBreadcrumb = new JLabel("Tableau de bord");
+        lblBreadcrumb = new JLabel("Accueil");
         lblBreadcrumb.setFont(Theme.F_SMALL);
         lblBreadcrumb.setForeground(Theme.TEXT_SECONDARY);
         bread.add(lblBreadcrumb);
@@ -182,7 +232,7 @@ public class MainFrame extends JFrame {
     private JPanel buildSidebar() {
         JPanel sb = new JPanel(new BorderLayout());
         sb.setBackground(Theme.BG_SIDEBAR);
-        sb.setPreferredSize(new Dimension(218, 0));
+        sb.setPreferredSize(new Dimension(60, 0));
         sb.setBorder(new MatteBorder(0, 0, 0, 1, Theme.BORDER));
 
         // Navigation
@@ -190,77 +240,62 @@ public class MainFrame extends JFrame {
         nav.setBackground(Theme.BG_SIDEBAR);
         nav.setLayout(new BoxLayout(nav, BoxLayout.Y_AXIS));
         nav.setBorder(new EmptyBorder(Theme.GAP_SM, Theme.GAP_SM, Theme.GAP_SM, Theme.GAP_SM));
-        nav.add(Box.createVerticalStrut(6));
-        nav.add(navSection("NAVIGATION"));
+        nav.add(Box.createVerticalStrut(10));
 
-        NavBtn d = new NavBtn("🏠", "Tableau de bord", V_DASH);
-        NavBtn g = new NavBtn("📊", "Diagramme de Gantt", V_GANTT);
-        NavBtn t = new NavBtn("📋", "Tableau des tâches", V_TABLE);
-        NavBtn e = new NavBtn("👥", "Équipe", V_TEAM);
-        NavBtn jn = new NavBtn("◆", "Jalons", V_JALON);
+        NavBtn d = new NavBtn(Widgets.svg("/resources/icons/dashboard.svg"), "Tableau de bord", V_DASH);
+        NavBtn g = new NavBtn(Widgets.svg("/resources/icons/gantt.svg"), "Diagramme de Gantt", V_GANTT);
+        NavBtn t = new NavBtn(Widgets.svg("/resources/icons/table.svg"), "Tâches", V_TABLE);
+        NavBtn e = new NavBtn(Widgets.svg("/resources/icons/team.svg"), "Équipe", V_TEAM);
+        NavBtn jn = new NavBtn(Widgets.svg("/resources/icons/milestone.svg"), "Jalons", V_JALON);
 
-        for (NavBtn b : new NavBtn[] { d, g, t, e, jn }) {
+        navButtons = Arrays.asList(d, g, t, e, jn);
+        for (NavBtn b : navButtons) {
+            b.setCollapsed(true);
             nav.add(b);
             nav.add(Box.createVerticalStrut(2));
         }
         activeNav = d;
         d.setActive(true);
 
-        nav.add(Box.createVerticalStrut(Theme.GAP_MD));
-        nav.add(navSection("PROJETS"));
-        Widgets.FlatButton btnNew = new Widgets.FlatButton("＋  Nouveau projet", Theme.ACCENT);
-        btnNew.setAlignmentX(LEFT_ALIGNMENT);
-        btnNew.setMaximumSize(new Dimension(Integer.MAX_VALUE, 32));
-        btnNew.addActionListener(e2 -> newProjet());
-        nav.add(btnNew);
-        nav.add(Box.createVerticalStrut(Theme.GAP_SM));
-        lblCount = new JLabel("");
-        lblCount.setFont(Theme.F_TINY);
-        lblCount.setForeground(Theme.TEXT_MUTED);
-        lblCount.setAlignmentX(LEFT_ALIGNMENT);
-        nav.add(lblCount);
-        nav.add(Box.createVerticalStrut(4));
-        sb.add(nav, BorderLayout.NORTH);
+        sidebarPanel = sb;
 
-        // Liste projets
+        // Container pour Logo + Nav
+        JPanel topContainer = new JPanel();
+        topContainer.setLayout(new BoxLayout(topContainer, BoxLayout.Y_AXIS));
+        topContainer.setOpaque(false);
+
+        // Logo Zone (Haut de la sidebar)
+        JPanel logoZone = new JPanel(new FlowLayout(FlowLayout.CENTER, 0, 15));
+        logoZone.setOpaque(false);
+        try {
+            java.net.URL logoUrl = getClass().getResource("/img/Gemini_Generated_Image_ubpqkiubpqkiubpq.png");
+            if (logoUrl != null) {
+                Image img = new ImageIcon(logoUrl).getImage().getScaledInstance(42, 42, Image.SCALE_SMOOTH);
+                logoZone.add(new JLabel(new ImageIcon(img)));
+            }
+        } catch (Exception ex) {}
+        topContainer.add(logoZone);
+        topContainer.add(nav);
+
+        sb.add(topContainer, BorderLayout.NORTH);
+
+
+        // Initialiser les modèles vides (nécessaire pour loadProjets)
         listModel = new DefaultListModel<>();
         projetList = new JList<>(listModel);
-        projetList.setBackground(Theme.BG_SIDEBAR);
-        projetList.setSelectionBackground(Theme.BG_SELECTED);
-        projetList.setFixedCellHeight(68);
-        projetList.setCellRenderer(new ProjetRenderer());
         projetList.addListSelectionListener(e2 -> {
-            if (!e2.getValueIsAdjusting())
+            if (!e2.getValueIsAdjusting() && !isRefreshingList)
                 onSelectProjet(projetList.getSelectedValue());
         });
 
-        // Menu contextuel
-        JPopupMenu menu = new JPopupMenu();
-        menu.setBackground(Theme.BG_CARD);
-        menu.setBorder(new LineBorder(Theme.BORDER));
-        for (String[] item : new String[][] { { "📊 Voir le Gantt", V_GANTT }, { "👥 Gérer l'équipe", V_TEAM },
-                { "◆ Jalons", V_JALON } }) {
-            JMenuItem mi = new JMenuItem(item[0]);
-            mi.setBackground(Theme.BG_CARD);
-            mi.setForeground(Theme.TEXT_PRIMARY);
-            mi.setFont(Theme.F_SMALL);
-            String view = item[1];
-            mi.addActionListener(e2 -> navigate(view));
-            menu.add(mi);
-        }
-        menu.addSeparator();
-        JMenuItem miDel = new JMenuItem("🗑  Supprimer le projet");
-        miDel.setBackground(Theme.BG_CARD);
-        miDel.setForeground(Theme.RED);
-        miDel.setFont(Theme.F_SMALL);
-        miDel.addActionListener(e2 -> deleteProjet());
-        menu.add(miDel);
-        projetList.setComponentPopupMenu(menu);
+        footPanel = buildSideFooter();
+        // Ajuster l'avatar pour le mode replié initial
+        userInfoPanel.setVisible(false);
+        FlowLayout fl = (FlowLayout) footPanel.getLayout();
+        fl.setAlignment(FlowLayout.CENTER);
+        fl.setHgap(0);
 
-        JScrollPane sp = Widgets.scroll(projetList);
-        sp.getViewport().setBackground(Theme.BG_SIDEBAR);
-        sb.add(sp, BorderLayout.CENTER);
-        sb.add(buildSideFooter(), BorderLayout.SOUTH);
+        sb.add(footPanel, BorderLayout.SOUTH);
         return sb;
     }
 
@@ -271,7 +306,7 @@ public class MainFrame extends JFrame {
         p.setMaximumSize(new Dimension(Integer.MAX_VALUE, 22));
         JLabel l = new JLabel(title);
         l.setFont(Theme.F_LABEL);
-        l.setForeground(Theme.TEXT_MUTED);
+        l.setForeground(Color.WHITE);
         l.setBorder(new EmptyBorder(0, 6, 4, 0));
         p.add(l, BorderLayout.WEST);
         return p;
@@ -281,20 +316,52 @@ public class MainFrame extends JFrame {
         JPanel f = new JPanel(new FlowLayout(FlowLayout.LEFT, Theme.GAP_SM, Theme.GAP_SM));
         f.setBackground(new Color(8, 8, 17));
         f.setBorder(new MatteBorder(1, 0, 0, 0, Theme.BORDER));
+        
         Widgets.Avatar av = new Widgets.Avatar("AD", Theme.ACCENT, 32);
-        JPanel info = new JPanel(new BorderLayout(0, 1));
-        info.setOpaque(false);
+        
+        userInfoPanel = new JPanel(new BorderLayout(0, 1));
+        userInfoPanel.setOpaque(false);
         JLabel nm = new JLabel("Administrateur");
         nm.setFont(Theme.font(Font.BOLD, 11));
         nm.setForeground(Theme.TEXT_PRIMARY);
         JLabel rl = new JLabel("Chef de projet");
         rl.setFont(Theme.F_TINY);
         rl.setForeground(Theme.TEXT_MUTED);
-        info.add(nm, BorderLayout.NORTH);
-        info.add(rl, BorderLayout.SOUTH);
+        userInfoPanel.add(nm, BorderLayout.NORTH);
+        userInfoPanel.add(rl, BorderLayout.SOUTH);
+        
         f.add(av);
-        f.add(info);
+        f.add(userInfoPanel);
         return f;
+    }
+
+    private void toggleSidebar() {
+        sidebarCollapsed = !sidebarCollapsed;
+        int width = sidebarCollapsed ? 60 : 218;
+        sidebarPanel.setPreferredSize(new Dimension(width, 0));
+        
+        // On masque les infos texte mais on garde le footer (pour l'avatar)
+        userInfoPanel.setVisible(!sidebarCollapsed);
+        
+        // Ajuster l'alignement pour centrer l'avatar quand c'est replié
+        FlowLayout fl = (FlowLayout) footPanel.getLayout();
+        if (sidebarCollapsed) {
+            fl.setAlignment(FlowLayout.CENTER);
+            fl.setHgap(0);
+        } else {
+            fl.setAlignment(FlowLayout.LEFT);
+            fl.setHgap(Theme.GAP_SM);
+        }
+        
+        for (NavBtn b : navButtons) b.setCollapsed(sidebarCollapsed);
+        btnToggle.repaint();
+        revalidate();
+        repaint();
+    }
+
+
+    private void toggleTaskDetail() {
+        detailDialog.setVisible(!detailDialog.isVisible());
     }
 
     // ─────────────────────────────────────────────────────────
@@ -305,11 +372,26 @@ public class MainFrame extends JFrame {
         mainContent = new JPanel(cardLayout);
         mainContent.setBackground(Theme.BG_PANEL);
 
+        // Initialiser le panneau de détail en tant que fenêtre flottante
+        detail = new TacheDetailPanel(() -> refreshAll());
+        detailDialog = new JDialog(this, "Détails de la tâche", false);
+        detailDialog.setLayout(new BorderLayout());
+        detailDialog.add(detail);
+        detailDialog.setSize(420, 800);
+        detailDialog.setLocation(1050, 100); // Position par défaut à droite du centre
+        
+        // Créer le module des tâches (Gantt + Tableau partageant le détail)
+        taskCardLayout = new CardLayout();
+        taskContent = new JPanel(taskCardLayout);
+        taskContent.setOpaque(true);
+        taskContent.setBackground(Theme.BG_PANEL);
+        taskContent.add(buildGanttView(), V_GANTT);
+        taskContent.add(buildTableView(), V_TABLE);
+
         dashboard = new DashboardPanel(service);
         dashboard.setOnOpenGantt(() -> navigate(V_GANTT));
         mainContent.add(dashboard, V_DASH);
-        mainContent.add(buildGanttView(), V_GANTT);
-        mainContent.add(buildTableView(), V_TABLE);
+        mainContent.add(taskContent, "task_module"); 
 
         equipe = new EquipePanel(() -> {
             refreshAll();
@@ -328,6 +410,7 @@ public class MainFrame extends JFrame {
     private JPanel buildGanttView() {
         JPanel v = new JPanel(new BorderLayout());
         v.setBackground(Theme.BG_PANEL);
+        v.setOpaque(true);
 
         // Toolbar
         JPanel tb = new JPanel(new BorderLayout());
@@ -336,35 +419,67 @@ public class MainFrame extends JFrame {
                 new EmptyBorder(Theme.GAP_SM, Theme.GAP_MD, Theme.GAP_SM, Theme.GAP_MD)));
         JPanel tl = new JPanel(new FlowLayout(FlowLayout.LEFT, Theme.GAP_SM, 0));
         tl.setOpaque(false);
-        Widgets.FlatButton add = new Widgets.FlatButton("＋  Nouvelle tâche", Theme.ACCENT);
-        Widgets.FlatButton del = new Widgets.FlatButton("✕  Supprimer", Theme.RED);
+        Widgets.FlatButton add = new Widgets.FlatButton("Nouvelle tâche", Theme.ACCENT);
+        FlatSVGIcon iconAdd = Widgets.svg("/resources/icons/plus.svg");
+        iconAdd.setColorFilter(new FlatSVGIcon.ColorFilter(color -> Theme.CYAN));
+        add.setIcon(iconAdd);
+        Widgets.FlatButton del = new Widgets.FlatButton("Supprimer", Theme.RED);
+        FlatSVGIcon iconDel = Widgets.svg("/resources/icons/trash.svg");
+        iconDel.setColorFilter(new FlatSVGIcon.ColorFilter(color -> Theme.CYAN));
+        del.setIcon(iconDel);
         add.addActionListener(e -> newTache());
         del.addActionListener(e -> deleteTache());
+
+        JTextField searchField = Widgets.searchField("Rechercher une tâche...", q -> {
+            searchQueryTaches = q.toLowerCase();
+            refreshAll();
+        });
+        tl.add(searchField);
+        tl.add(Box.createHorizontalStrut(Theme.GAP_SM));
+
         tl.add(add);
         tl.add(del);
+
+        // Bouton replier détail
+        FlatSVGIcon iconDetail = Widgets.svg("/resources/icons/edit.svg");
+        iconDetail.setColorFilter(new FlatSVGIcon.ColorFilter(color -> Theme.CYAN));
+        Widgets.FlatButton btnDet = new Widgets.FlatButton("Détails", Theme.BG_CARD);
+        btnDet.setIcon(iconDetail);
+        btnDet.addActionListener(e -> toggleTaskDetail());
+        tl.add(Box.createHorizontalStrut(Theme.GAP_SM));
+        tl.add(btnDet);
         JPanel tr = new JPanel(new FlowLayout(FlowLayout.RIGHT, Theme.GAP_SM, 0));
         tr.setOpaque(false);
-        JLabel hint = new JLabel("💡 Cliquez sur une barre pour éditer à droite");
+        JLabel hint = new JLabel("💡 Ctrl+Molette pour Zoom");
         hint.setFont(Theme.F_TINY);
         hint.setForeground(Theme.TEXT_MUTED);
         tr.add(hint);
+        tr.add(Box.createHorizontalStrut(Theme.GAP_MD));
+
+        Widgets.FlatButton zIn = Widgets.FlatButton.outline(" + ", Theme.TEXT_SECONDARY);
+        zIn.addActionListener(e -> gantt.zoomIn());
+        Widgets.FlatButton zOut = Widgets.FlatButton.outline(" - ", Theme.TEXT_SECONDARY);
+        zOut.addActionListener(e -> gantt.zoomOut());
+        Widgets.FlatButton zRes = Widgets.FlatButton.outline(" 100% ", Theme.TEXT_SECONDARY);
+        zRes.addActionListener(e -> gantt.resetZoom());
+
+        tr.add(zOut);
+        tr.add(zIn);
+        tr.add(zRes);
         tb.add(tl, BorderLayout.WEST);
         tb.add(tr, BorderLayout.EAST);
 
         gantt = new GanttPanel();
-        gantt.setListener(t -> detail.setTache(t, selectedProjet));
+        gantt.setListener((t, p) -> {
+            detail.setTache(t, p);
+            if (t != null) detailDialog.setVisible(true);
+        });
         JScrollPane gs = Widgets.scroll(gantt);
         gs.getViewport().setBackground(Theme.BG_PANEL);
 
-        detail = new TacheDetailPanel(() -> refreshAll());
-        JSplitPane split = new JSplitPane(JSplitPane.HORIZONTAL_SPLIT, gs, detail);
-        split.setDividerLocation(1080);
-        split.setDividerSize(1);
-        split.setBackground(Theme.BORDER);
-        split.setBorder(null);
-
         v.add(tb, BorderLayout.NORTH);
-        v.add(split, BorderLayout.CENTER);
+        v.add(gs, BorderLayout.CENTER);
+        
         return v;
     }
 
@@ -378,19 +493,44 @@ public class MainFrame extends JFrame {
                 new EmptyBorder(Theme.GAP_SM, Theme.GAP_MD, Theme.GAP_SM, Theme.GAP_MD)));
         JPanel tl = new JPanel(new FlowLayout(FlowLayout.LEFT, Theme.GAP_SM, 0));
         tl.setOpaque(false);
-        Widgets.FlatButton add = new Widgets.FlatButton("＋  Nouvelle tâche", Theme.ACCENT);
-        Widgets.FlatButton del = new Widgets.FlatButton("✕  Supprimer", Theme.RED);
+        Widgets.FlatButton add = new Widgets.FlatButton("Nouvelle tâche", Theme.ACCENT);
+        FlatSVGIcon iconAdd2 = Widgets.svg("/resources/icons/plus.svg");
+        iconAdd2.setColorFilter(new FlatSVGIcon.ColorFilter(color -> Theme.CYAN));
+        add.setIcon(iconAdd2);
+        Widgets.FlatButton del = new Widgets.FlatButton("Supprimer", Theme.RED);
+        FlatSVGIcon iconDel2 = Widgets.svg("/resources/icons/trash.svg");
+        iconDel2.setColorFilter(new FlatSVGIcon.ColorFilter(color -> Theme.CYAN));
+        del.setIcon(iconDel2);
         add.addActionListener(e -> newTache());
         del.addActionListener(e -> deleteTache());
+
+        // Bouton replier détail
+        FlatSVGIcon iconDetail2 = Widgets.svg("/resources/icons/edit.svg");
+        iconDetail2.setColorFilter(new FlatSVGIcon.ColorFilter(color -> Theme.CYAN));
+        Widgets.FlatButton btnDet2 = new Widgets.FlatButton("Détails", Theme.BG_CARD);
+        btnDet2.setIcon(iconDetail2);
+        btnDet2.addActionListener(e -> toggleTaskDetail());
+
+        JTextField searchField = Widgets.searchField("Rechercher une tâche...", q -> {
+            searchQueryTaches = q.toLowerCase();
+            refreshAll();
+        });
+        tl.add(searchField);
+        tl.add(Box.createHorizontalStrut(Theme.GAP_SM));
+
         tl.add(add);
         tl.add(del);
+        tl.add(Box.createHorizontalStrut(Theme.GAP_SM));
+        tl.add(btnDet2);
         tb.add(tl, BorderLayout.WEST);
         v.add(tb, BorderLayout.NORTH);
 
-        String[] cols = { "#", "Tâche", "Responsable", "Début", "Fin", "Durée", "Statut", "Priorité", "Progression" };
+        String[] cols = {"ID", "Tâche", "Début", "Fin", "Durée", "Marge", "Prédécesseurs", "Successeurs", "Prog.", "Statut", "Resp."};
         tableModel = new DefaultTableModel(cols, 0) {
-            public boolean isCellEditable(int r, int c) {
-                return false;
+            @Override public boolean isCellEditable(int r, int c) { return false; }
+            @Override public Class<?> getColumnClass(int c) {
+                if (c == 0 || c == 4 || c == 5 || c == 8) return Integer.class;
+                return String.class;
             }
         };
 
@@ -413,6 +553,7 @@ public class MainFrame extends JFrame {
         tacheTable.setShowGrid(false);
         tacheTable.setIntercellSpacing(new Dimension(0, 1));
         tacheTable.setFillsViewportHeight(true);
+        tacheTable.setAutoCreateRowSorter(true);
 
         JTableHeader th = tacheTable.getTableHeader();
         th.setBackground(Theme.BG_TOPBAR);
@@ -421,11 +562,33 @@ public class MainFrame extends JFrame {
         th.setBorder(new MatteBorder(0, 0, 1, 0, Theme.BORDER));
         th.setReorderingAllowed(false);
 
-        int[] widths = { 40, 200, 130, 90, 90, 65, 115, 90, 110 };
+        int[] widths = { 40, 200, 85, 85, 65, 65, 130, 130, 80, 100, 90 };
         for (int i = 0; i < widths.length; i++)
             tacheTable.getColumnModel().getColumn(i).setPreferredWidth(widths[i]);
 
-        // Renderer Progression
+        // Renderer Date (2, 3)
+        TableCellRenderer dateRenderer = (table, val, sel, foc, r, c) -> {
+            JLabel l = new JLabel(val != null ? val.toString() : ""); 
+            l.setFont(Theme.F_SMALL); l.setForeground(Theme.TEXT_PRIMARY);
+            l.setOpaque(true); l.setBackground(sel ? Theme.BG_SELECTED : r % 2 == 0 ? Theme.BG_ROW_ODD : Theme.BG_ROW_EVEN);
+            l.setBorder(new EmptyBorder(0,5,0,5));
+            return l;
+        };
+        tacheTable.getColumnModel().getColumn(2).setCellRenderer(dateRenderer);
+        tacheTable.getColumnModel().getColumn(3).setCellRenderer(dateRenderer);
+
+        // Renderer Durée et Marge (4, 5)
+        TableCellRenderer centerRenderer = (table, val, sel, foc, row, col) -> {
+            JLabel l = new JLabel(val + " j");
+            l.setFont(Theme.F_SMALL); l.setForeground(Theme.TEXT_PRIMARY);
+            l.setHorizontalAlignment(SwingConstants.CENTER);
+            l.setOpaque(true); l.setBackground(sel ? Theme.BG_SELECTED : row % 2 == 0 ? Theme.BG_ROW_ODD : Theme.BG_ROW_EVEN);
+            return l;
+        };
+        tacheTable.getColumnModel().getColumn(4).setCellRenderer(centerRenderer);
+        tacheTable.getColumnModel().getColumn(5).setCellRenderer(centerRenderer);
+
+        // Renderer Progression (8)
         tacheTable.getColumnModel().getColumn(8).setCellRenderer((table, val, sel, foc, row, col) -> {
             int pv = val instanceof Integer ? (Integer) val : 0;
             Color pc = pv == 100 ? Theme.GREEN : pv > 50 ? Theme.ACCENT : Theme.ORANGE;
@@ -435,16 +598,11 @@ public class MainFrame extends JFrame {
             return pb;
         });
 
-        // Renderer Statut
-        tacheTable.getColumnModel().getColumn(6).setCellRenderer((table, val, sel, foc, row, col) -> {
-            String sv = val != null ? val.toString() : "";
-            Color sc = Theme.TEXT_MUTED;
-            for (Tache.Statut s : Tache.Statut.values())
-                if (s.toString().replace("_", " ").equals(sv)) {
-                    sc = Theme.statutColor(s);
-                    break;
-                }
-            Widgets.Badge b = new Widgets.Badge(sv, sc);
+        // Renderer Statut (9)
+        tacheTable.getColumnModel().getColumn(9).setCellRenderer((table, val, sel, foc, row, col) -> {
+            Tache.Statut s = val instanceof Tache.Statut ? (Tache.Statut) val : Tache.Statut.NON_COMMENCE;
+            String sv = s.toString().replace("_", " ");
+            Widgets.Badge b = new Widgets.Badge(sv, Theme.statutColor(s));
             b.setBackground(sel ? Theme.BG_SELECTED : row % 2 == 0 ? Theme.BG_ROW_ODD : Theme.BG_ROW_EVEN);
             b.setOpaque(true);
             return b;
@@ -453,9 +611,16 @@ public class MainFrame extends JFrame {
         tacheTable.getSelectionModel().addListSelectionListener(e -> {
             if (!e.getValueIsAdjusting() && selectedProjet != null) {
                 int r = tacheTable.getSelectedRow();
-                if (r >= 0 && r < selectedProjet.getTaches().size())
-                    detail.setTache(selectedProjet.getTaches().get(r), selectedProjet);
-            }
+                    if (r >= 0) {
+                        try {
+                            int id = (int) tacheTable.getValueAt(r, 0);
+                            Tache t = findTache(id);
+                            if (t != null) {
+                                detail.setTache(t, selectedProjet);
+                                detailDialog.setVisible(true);
+                            }
+                        } catch(Exception ex) {}
+                    }          }
         });
 
         JScrollPane sp = Widgets.scroll(tacheTable);
@@ -468,9 +633,16 @@ public class MainFrame extends JFrame {
     // Navigation & Sélection
     // ─────────────────────────────────────────────────────────
     private void navigate(String view) {
-        cardLayout.show(mainContent, view);
+        if (view.equals(V_GANTT) || view.equals(V_TABLE)) {
+            cardLayout.show(mainContent, "task_module");
+            taskCardLayout.show(taskContent, view);
+        } else {
+            cardLayout.show(mainContent, view);
+        }
+        mainContent.revalidate();
+        mainContent.repaint();
         lblBreadcrumb.setText(switch (view) {
-            case V_DASH -> "Tableau de bord";
+            case V_DASH -> "Accueil";
             case V_GANTT -> (selectedProjet != null ? selectedProjet.getNom() + "  /  " : "") + "Diagramme de Gantt";
             case V_TABLE -> (selectedProjet != null ? selectedProjet.getNom() + "  /  " : "") + "Tâches";
             case V_TEAM -> (selectedProjet != null ? selectedProjet.getNom() + "  /  " : "") + "Équipe";
@@ -482,9 +654,27 @@ public class MainFrame extends JFrame {
     }
 
     private void loadProjets() {
+        isRefreshingList = true;
+        Projet current = selectedProjet;
         listModel.clear();
         service.getProjets().forEach(listModel::addElement);
-        lblCount.setText(service.getProjets().size() + " projet(s)");
+        if (current != null) {
+            for (int i = 0; i < listModel.getSize(); i++) {
+                if (listModel.get(i).getId() == current.getId()) {
+                    projetList.setSelectedIndex(i);
+                    break;
+                }
+            }
+        }
+        isRefreshingList = false;
+    }
+
+    private Tache findTache(int id) {
+        if (selectedProjet == null) return null;
+        for (Tache t : selectedProjet.getTaches()) {
+            if (t.getId() == id) return t;
+        }
+        return null;
     }
 
     private void onSelectProjet(Projet p) {
@@ -493,12 +683,7 @@ public class MainFrame extends JFrame {
             clearTop();
             return;
         }
-        gantt.setProjet(p);
-        refreshTable();
-        updateTop(p);
-        equipe.setProjet(p);
-        jalons.setProjet(p);
-        dashboard.refresh();
+        refreshAll();
     }
 
     private void updateTop(Projet p) {
@@ -518,24 +703,71 @@ public class MainFrame extends JFrame {
         topBar.setValue(0);
         lblPct.setText("0%");
         lblMeta.setText("");
-        lblBreadcrumb.setText("Tableau de bord");
+        lblBreadcrumb.setText("Accueil");
     }
 
     private void refreshTable() {
-        if (selectedProjet == null || tableModel == null)
-            return;
+        if (selectedProjet == null || tableModel == null) return;
         tableModel.setRowCount(0);
         DateTimeFormatter fmt = DateTimeFormatter.ofPattern("dd/MM/yyyy");
+        
+        java.util.Map<Integer, Long> marges = ProjetService.calculerMarges(selectedProjet);
+
         for (Tache t : selectedProjet.getTaches()) {
-            tableModel.addRow(new Object[] { t.getId(), t.getNom(), t.getResponsable(),
-                    t.getDateDebut().format(fmt), t.getDateFin().format(fmt), t.getDureeJours() + " j",
-                    t.getStatut().toString().replace("_", " "), t.getPriorite().toString(), t.getProgression() });
+            if (!searchQueryTaches.isEmpty() && !t.getNom().toLowerCase().contains(searchQueryTaches)) continue;
+            
+            // Prédécesseurs
+            String pre = "";
+            java.util.List<Integer> deps = t.getDependances();
+            if (!deps.isEmpty()) {
+                java.util.List<String> names = new java.util.ArrayList<>();
+                for (Integer id : deps) {
+                    Tache other = findTache(id);
+                    if (other != null) names.add(other.getNom());
+                }
+                pre = String.join(", ", names);
+            }
+
+            // Successeurs
+            String succ = "";
+            java.util.List<String> succNames = new java.util.ArrayList<>();
+            for (Tache other : selectedProjet.getTaches()) {
+                if (other.getDependances().contains(t.getId())) {
+                    succNames.add(other.getNom());
+                }
+            }
+            if (!succNames.isEmpty()) {
+                succ = String.join(", ", succNames);
+            }
+
+            long margeVal = marges.getOrDefault(t.getId(), 0L);
+
+            tableModel.addRow(new Object[] { 
+                t.getId(), 
+                t.getNom(), 
+                t.getDateDebut().format(fmt), 
+                t.getDateFin().format(fmt), 
+                (int)t.getDureeJours(),
+                (int)margeVal,
+                pre,
+                succ,
+                t.getProgression(),
+                t.getStatut(), 
+                t.getResponsable() != null ? t.getResponsable() : "-"
+            });
         }
     }
 
     private void refreshAll() {
         if (selectedProjet != null) {
+            java.util.Set<Integer> cp = ProjetService.calculerCheminCritique(selectedProjet);
+            gantt.setCriticalPath(cp);
+            detail.setCriticalPath(cp);
+            gantt.setSearchQuery(searchQueryTaches);
             gantt.setProjet(selectedProjet);
+            equipe.setProjet(selectedProjet);
+            jalons.setProjet(selectedProjet);
+            dashboard.setProjet(selectedProjet);
             refreshTable();
             updateTop(selectedProjet);
             loadProjets();
@@ -546,13 +778,14 @@ public class MainFrame extends JFrame {
     // ─────────────────────────────────────────────────────────
     // Actions
     // ─────────────────────────────────────────────────────────
-    private void newProjet() {
+    public void newProjet() {
         NouveauProjetDialog dlg = new NouveauProjetDialog(this);
         dlg.setVisible(true);
         Projet r = dlg.getResult();
         if (r != null) {
             service.ajouterProjet(r);
             loadProjets();
+            rootLayout.show(rootPanel, ROOT_WORKSPACE);
             projetList.setSelectedIndex(listModel.getSize() - 1);
             Toast.ok("Projet « " + r.getNom() + " » créé");
             navigate(V_GANTT);
@@ -564,7 +797,7 @@ public class MainFrame extends JFrame {
             Toast.warn("Sélectionnez un projet d'abord");
             return;
         }
-        NouveauTacheDialog dlg = new NouveauTacheDialog(this);
+        NouveauTacheDialog dlg = new NouveauTacheDialog(this, selectedProjet.getTaches(), selectedProjet.getMembres());
         dlg.setVisible(true);
         Tache r = dlg.getResult();
         if (r != null) {
@@ -618,71 +851,61 @@ public class MainFrame extends JFrame {
     // Composants internes
     // ─────────────────────────────────────────────────────────
     private class NavBtn extends JPanel {
-        private final String view;
-        private boolean active;
+        private final FlatSVGIcon icon;
+        private final String text, view;
+        private boolean active = false;
+        private boolean collapsed = false;
+        private final JLabel lblText;
 
-        NavBtn(String icon, String label, String view) {
+        public NavBtn(FlatSVGIcon icon, String text, String view) {
+            this.icon = icon;
+            this.text = text;
             this.view = view;
-            setLayout(new FlowLayout(FlowLayout.LEFT, Theme.GAP_SM, 6));
-            setOpaque(false);
-            setAlignmentX(LEFT_ALIGNMENT);
-            setMaximumSize(new Dimension(Integer.MAX_VALUE, 36));
+            
+            setLayout(new BorderLayout(12, 0));
+            setBackground(Theme.BG_SIDEBAR);
+            setBorder(new EmptyBorder(8, 12, 8, 12));
             setCursor(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR));
-            JLabel il = new JLabel(icon);
-            il.setFont(Theme.font(Font.PLAIN, 13));
-            JLabel ll = new JLabel(label);
-            ll.setFont(Theme.F_SMALL);
-            add(il);
-            add(ll);
-            setForeground(Theme.TEXT_SECONDARY);
+
+            icon.setColorFilter(new FlatSVGIcon.ColorFilter(c -> active ? Theme.CYAN : Theme.TEXT_MUTED));
+            JLabel lblIcon = new JLabel(icon);
+            add(lblIcon, BorderLayout.WEST);
+
+            lblText = new JLabel(text);
+            lblText.setFont(Theme.F_SMALL);
+            lblText.setForeground(Theme.TEXT_MUTED);
+            add(lblText, BorderLayout.CENTER);
+
             addMouseListener(new MouseAdapter() {
-                public void mouseClicked(MouseEvent e) {
-                    if (activeNav != null)
-                        activeNav.setActive(false);
-                    setActive(true);
-                    activeNav = NavBtn.this;
-                    navigate(view);
-                }
-
-                public void mouseEntered(MouseEvent e) {
-                    if (!active) {
-                        setOpaque(true);
-                        setBackground(Theme.BG_CARD_HOVER);
-                        repaint();
-                    }
-                }
-
-                public void mouseExited(MouseEvent e) {
-                    if (!active) {
-                        setOpaque(false);
-                        repaint();
-                    }
-                }
+                public void mouseEntered(MouseEvent e) { if (!active) setBackground(Theme.BG_CARD_HOVER); }
+                public void mouseExited(MouseEvent e) { if (!active) setBackground(Theme.BG_SIDEBAR); }
+                public void mouseClicked(MouseEvent e) { navigate(view); setActive(true); }
             });
         }
 
-        void setActive(boolean a) {
-            active = a;
-            setOpaque(a);
-            setBackground(a ? Theme.BG_SELECTED : Theme.BG_SIDEBAR);
-            setBorder(a ? new MatteBorder(0, 3, 0, 0, Theme.ACCENT) : new EmptyBorder(0, 3, 0, 0));
-            for (Component c : getComponents()) {
-                if (c instanceof JLabel)
-                    c.setForeground(a ? Theme.TEXT_PRIMARY : Theme.TEXT_SECONDARY);
+        public void setActive(boolean v) {
+            this.active = v;
+            if (active) {
+                if (activeNav != null && activeNav != this)
+                    activeNav.setActive(false);
+                activeNav = this;
+                setBackground(Theme.BG_SELECTED);
+                lblText.setForeground(Theme.CYAN);
+                icon.setColorFilter(new FlatSVGIcon.ColorFilter(c -> Theme.CYAN));
+            } else {
+                setBackground(Theme.BG_SIDEBAR);
+                lblText.setForeground(Theme.TEXT_MUTED);
+                icon.setColorFilter(new FlatSVGIcon.ColorFilter(c -> Theme.TEXT_MUTED));
             }
             repaint();
         }
 
-        @Override
-        protected void paintComponent(Graphics g) {
-            if (active || isOpaque()) {
-                Graphics2D g2 = (Graphics2D) g.create();
-                g2.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
-                g2.setColor(getBackground());
-                g2.fillRoundRect(0, 0, getWidth(), getHeight(), Theme.R_SM, Theme.R_SM);
-                g2.dispose();
-            }
-            super.paintComponent(g);
+        public void setCollapsed(boolean v) {
+            this.collapsed = v;
+            lblText.setVisible(!v);
+            setBorder(new EmptyBorder(8, v ? 18 : 12, 8, v ? 16 : 12));
+            setToolTipText(v ? text : null);
+            revalidate();
         }
     }
 
@@ -699,7 +922,7 @@ public class MainFrame extends JFrame {
             String name = p.getNom().length() > 20 ? p.getNom().substring(0, 18) + "…" : p.getNom();
             JLabel nm = new JLabel(name);
             nm.setFont(Theme.font(Font.BOLD, 11));
-            nm.setForeground(sel ? Color.WHITE : Theme.TEXT_PRIMARY);
+            nm.setForeground(Color.WHITE);
             JLabel info = new JLabel(p.getTaches().size() + " tâches  •  " + p.getMembres().size() + " membres");
             info.setFont(Theme.F_TINY);
             info.setForeground(Theme.TEXT_SECONDARY);

@@ -5,6 +5,7 @@ import gestion.model.Projet;
 import gestion.model.Tache;
 import gestion.util.Theme;
 import gestion.util.Widgets;
+import com.formdev.flatlaf.extras.FlatSVGIcon;
 
 import javax.swing.*;
 import javax.swing.border.*;
@@ -23,7 +24,8 @@ public class JalonFormDialog extends JDialog {
     private final Projet projet;
     private Jalon result;
 
-    private JTextField              tfNom, tfDate, tfDesc;
+    private JTextField              tfNom, tfDesc;
+    private Widgets.DatePicker      tfDate;
     private JComboBox<Jalon.Type>   cbType;
     private JComboBox<Jalon.Statut> cbStatut;
     private JComboBox<String>       cbTache;   // tâche liée (optionnelle)
@@ -88,15 +90,14 @@ public class JalonFormDialog extends JDialog {
         body.setLayout(new BoxLayout(body, BoxLayout.Y_AXIS));
         body.setBorder(new EmptyBorder(Theme.GAP_LG, Theme.GAP_LG, Theme.GAP_MD, Theme.GAP_LG));
 
-        secLabel(body, "📌  Identité");
+        secLabel(body, "Identité", "milestone.svg");
         tfNom = addF(body, "Nom du jalon *", "Ex : Livraison version 1.0");
 
         // Date
         JPanel drow = new JPanel(new BorderLayout(0,4)); drow.setOpaque(false);
         drow.setAlignmentX(LEFT_ALIGNMENT); drow.setMaximumSize(new Dimension(Integer.MAX_VALUE,58));
-        drow.add(lbl("Date du jalon *  (dd/MM/yyyy)"), BorderLayout.NORTH);
-        tfDate = new JTextField(LocalDate.now().plusDays(30).format(DateTimeFormatter.ofPattern("dd/MM/yyyy")));
-        Theme.applyTextField(tfDate);
+        drow.add(lbl("Date du jalon *"), BorderLayout.NORTH);
+        tfDate = new Widgets.DatePicker(LocalDate.now().plusDays(30));
         drow.add(tfDate, BorderLayout.CENTER);
         body.add(drow); body.add(Box.createVerticalStrut(Theme.GAP_SM));
 
@@ -110,7 +111,7 @@ public class JalonFormDialog extends JDialog {
         tsRow.add(lf("Statut", cbStatut));
         body.add(tsRow); body.add(Box.createVerticalStrut(Theme.GAP_MD));
 
-        secLabel(body, "🔗  Liens");
+        secLabel(body, "Liens", "link.svg");
         // Tâche liée
         JPanel trow = new JPanel(new BorderLayout(0,4)); trow.setOpaque(false);
         trow.setAlignmentX(LEFT_ALIGNMENT); trow.setMaximumSize(new Dimension(Integer.MAX_VALUE,58));
@@ -120,7 +121,7 @@ public class JalonFormDialog extends JDialog {
         trow.add(cbTache, BorderLayout.CENTER);
         body.add(trow); body.add(Box.createVerticalStrut(Theme.GAP_MD));
 
-        secLabel(body, "📝  Description");
+        secLabel(body, "Description", "edit.svg");
         JPanel descRow = new JPanel(new BorderLayout(0,4)); descRow.setOpaque(false);
         descRow.setAlignmentX(LEFT_ALIGNMENT); descRow.setMaximumSize(new Dimension(Integer.MAX_VALUE,85));
         JTextArea ta = new JTextArea(3,20); Theme.applyTextArea(ta);
@@ -142,8 +143,11 @@ public class JalonFormDialog extends JDialog {
         foot.setBorder(new MatteBorder(1,0,0,0,Theme.BORDER));
         Widgets.FlatButton cancel = new Widgets.FlatButton("Annuler", new Color(48,48,72));
         cancel.addActionListener(e -> dispose());
-        String lbl2 = editJalon==null ? "✓  Créer le jalon" : "✓  Enregistrer";
+        String lbl2 = editJalon==null ? "Créer le jalon" : "Enregistrer";
         Widgets.FlatButton save = new Widgets.FlatButton(lbl2, Theme.GOLD);
+        FlatSVGIcon iconS = Widgets.svg("/resources/icons/check.svg", 14, 14);
+        iconS.setColorFilter(new FlatSVGIcon.ColorFilter(c -> new Color(20,18,0)));
+        save.setIcon(iconS); save.setIconTextGap(6);
         save.setForeground(new Color(20,18,0));
         save.addActionListener(e -> handleSave(body));
         foot.add(cancel); foot.add(save);
@@ -240,11 +244,20 @@ public class JalonFormDialog extends JDialog {
         return tf;
     }
 
-    private void secLabel(JPanel p, String text) {
-        JLabel l = new JLabel(text.toUpperCase()); l.setFont(Theme.F_LABEL); l.setForeground(Theme.TEXT_MUTED);
+    private void secLabel(JPanel p, String text, String iconName) {
+        JLabel l = new JLabel(text.toUpperCase());
+        l.setFont(Theme.font(Font.BOLD, 10)); l.setForeground(Theme.TEXT_MUTED);
+        
+        if (iconName != null) {
+            FlatSVGIcon icon = Widgets.svg("/resources/icons/" + iconName, 12, 12);
+            icon.setColorFilter(new FlatSVGIcon.ColorFilter(c -> Theme.TEXT_MUTED));
+            l.setIcon(icon);
+            l.setIconTextGap(6);
+        }
+        
         l.setAlignmentX(LEFT_ALIGNMENT);
-        l.setBorder(new CompoundBorder(new MatteBorder(0,0,1,0,Theme.BORDER),new EmptyBorder(0,0,4,0)));
-        l.setMaximumSize(new Dimension(Integer.MAX_VALUE,20));
+        l.setBorder(new CompoundBorder(new MatteBorder(0,0,1,0,Theme.BORDER),new EmptyBorder(4,0,4,0)));
+        l.setMaximumSize(new Dimension(Integer.MAX_VALUE,24));
         p.add(l); p.add(Box.createVerticalStrut(Theme.GAP_SM));
     }
 

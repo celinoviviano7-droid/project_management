@@ -3,6 +3,7 @@ package gestion.ui;
 import gestion.model.Membre;
 import gestion.util.Theme;
 import gestion.util.Widgets;
+import com.formdev.flatlaf.extras.FlatSVGIcon;
 
 import javax.swing.*;
 import javax.swing.border.*;
@@ -71,7 +72,7 @@ public class MembreFormDialog extends JDialog {
         body.setLayout(new BoxLayout(body, BoxLayout.Y_AXIS));
         body.setBorder(new EmptyBorder(Theme.GAP_LG, Theme.GAP_LG, Theme.GAP_MD, Theme.GAP_LG));
 
-        secLabel(body, "👤  Identité");
+        secLabel(body, "Identité", "team.svg");
         JPanel nameRow = new JPanel(new GridLayout(1,2,8,0)); nameRow.setOpaque(false);
         nameRow.setAlignmentX(LEFT_ALIGNMENT); nameRow.setMaximumSize(new Dimension(Integer.MAX_VALUE,56));
         tfPrenom = tf(); tfNom = tf();
@@ -82,7 +83,7 @@ public class MembreFormDialog extends JDialog {
         tfTel   = addF(body, "Téléphone", "+261 34 XX XXX XX");
         body.add(Box.createVerticalStrut(Theme.GAP_SM));
 
-        secLabel(body, "🎯  Rôle & Disponibilité");
+        secLabel(body, "Rôle & Disponibilité", "info.svg");
         JPanel rdRow = new JPanel(new GridLayout(1,2,8,0)); rdRow.setOpaque(false);
         rdRow.setAlignmentX(LEFT_ALIGNMENT); rdRow.setMaximumSize(new Dimension(Integer.MAX_VALUE,58));
         cbRole  = new JComboBox<>(Membre.Role.values());          Theme.applyCombo(cbRole);
@@ -93,7 +94,7 @@ public class MembreFormDialog extends JDialog {
         tfComp = addF(body, "Compétences", "Ex : Java, React, SQL — séparées par virgules");
         body.add(Box.createVerticalStrut(Theme.GAP_SM));
 
-        secLabel(body, "🎨  Couleur de l'avatar");
+        secLabel(body, "Couleur de l'avatar", "edit.svg");
         body.add(buildPalette());
 
         JScrollPane sp = Widgets.scroll(body); sp.getViewport().setBackground(Theme.BG_PANEL);
@@ -105,8 +106,11 @@ public class MembreFormDialog extends JDialog {
         foot.setBorder(new MatteBorder(1,0,0,0,Theme.BORDER));
         Widgets.FlatButton cancel = new Widgets.FlatButton("Annuler", new Color(48,48,72));
         cancel.addActionListener(e -> dispose());
-        String saveLabel = editMembre==null ? "✓  Ajouter" : "✓  Enregistrer";
+        String saveLabel = editMembre==null ? "Ajouter" : "Enregistrer";
         Widgets.FlatButton save = new Widgets.FlatButton(saveLabel, Theme.ACCENT);
+        FlatSVGIcon iconS = Widgets.svg("/resources/icons/check.svg", 14, 14);
+        iconS.setColorFilter(new FlatSVGIcon.ColorFilter(c -> Color.WHITE));
+        save.setIcon(iconS); save.setIconTextGap(6);
         save.addActionListener(e -> handleSave());
         foot.add(cancel); foot.add(save);
         root.add(foot, BorderLayout.SOUTH);
@@ -218,11 +222,20 @@ public class MembreFormDialog extends JDialog {
         JLabel l = new JLabel(t); l.setFont(Theme.F_LABEL); l.setForeground(Theme.TEXT_SECONDARY); return l;
     }
 
-    private void secLabel(JPanel p, String text) {
-        JLabel l = new JLabel(text.toUpperCase()); l.setFont(Theme.F_LABEL); l.setForeground(Theme.TEXT_MUTED);
+    private void secLabel(JPanel p, String text, String iconName) {
+        JLabel l = new JLabel(text.toUpperCase());
+        l.setFont(Theme.font(Font.BOLD, 10)); l.setForeground(Theme.TEXT_MUTED);
+        
+        if (iconName != null) {
+            FlatSVGIcon icon = new FlatSVGIcon("resources/icons/" + iconName, 12, 12);
+            icon.setColorFilter(new FlatSVGIcon.ColorFilter(c -> Theme.TEXT_MUTED));
+            l.setIcon(icon);
+            l.setIconTextGap(6);
+        }
+        
         l.setAlignmentX(LEFT_ALIGNMENT);
-        l.setBorder(new CompoundBorder(new MatteBorder(0,0,1,0,Theme.BORDER),new EmptyBorder(0,0,4,0)));
-        l.setMaximumSize(new Dimension(Integer.MAX_VALUE,20));
+        l.setBorder(new CompoundBorder(new MatteBorder(0,0,1,0,Theme.BORDER),new EmptyBorder(4,0,4,0)));
+        l.setMaximumSize(new Dimension(Integer.MAX_VALUE,24));
         p.add(l); p.add(Box.createVerticalStrut(Theme.GAP_SM));
     }
 

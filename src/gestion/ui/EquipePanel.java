@@ -2,11 +2,13 @@ package gestion.ui;
 
 import gestion.model.*;
 import gestion.util.*;
+import com.formdev.flatlaf.extras.FlatSVGIcon;
 
 import javax.swing.*;
 import javax.swing.border.*;
 import java.awt.*;
 import java.awt.event.*;
+import java.net.URI;
 import java.util.List;
 
 public class EquipePanel extends JPanel {
@@ -18,6 +20,7 @@ public class EquipePanel extends JPanel {
     private JPanel cardsPanel;
     private JLabel lblInfo;
     private JPanel detailPanel;
+    private String searchQuery = "";
 
     public EquipePanel(Runnable onUpdate) {
         this.onUpdate = onUpdate;
@@ -32,7 +35,8 @@ public class EquipePanel extends JPanel {
         add(buildToolbar(), BorderLayout.NORTH);
 
         JSplitPane split = new JSplitPane(JSplitPane.HORIZONTAL_SPLIT, buildCardsArea(), buildDetailArea());
-        split.setDividerLocation(620);
+        split.setDividerLocation(850);
+        split.setResizeWeight(0.6);
         split.setDividerSize(1);
         split.setBackground(Theme.BORDER);
         split.setBorder(null);
@@ -47,11 +51,33 @@ public class EquipePanel extends JPanel {
 
         JPanel left = new JPanel(new FlowLayout(FlowLayout.LEFT, Theme.GAP_SM, 0));
         left.setOpaque(false);
+ 
+        JTextField searchField = Widgets.searchField("Rechercher un membre...", q -> {
+            searchQuery = q.toLowerCase();
+            refresh();
+        });
+        left.add(searchField);
+        left.add(Box.createHorizontalStrut(Theme.GAP_SM));
 
-        Widgets.FlatButton btnAdd    = new Widgets.FlatButton("＋  Ajouter un membre", Theme.ACCENT);
-        Widgets.FlatButton btnAssign = new Widgets.FlatButton("🔗  Assigner des tâches", new Color(40,110,65));
-        Widgets.FlatButton btnEdit   = new Widgets.FlatButton("✏  Modifier", new Color(55,75,140));
-        Widgets.FlatButton btnDel    = new Widgets.FlatButton("✕  Retirer", Theme.RED);
+        Widgets.FlatButton btnAdd    = new Widgets.FlatButton("Ajouter un membre", Theme.ACCENT);
+        FlatSVGIcon iconAdd = Widgets.svg("/resources/icons/plus.svg");
+        iconAdd.setColorFilter(new FlatSVGIcon.ColorFilter(color -> Theme.CYAN));
+        btnAdd.setIcon(iconAdd);
+ 
+        Widgets.FlatButton btnAssign = new Widgets.FlatButton("Assigner des tâches", new Color(40,110,65));
+        FlatSVGIcon iconLink = Widgets.svg("/resources/icons/link.svg");
+        iconLink.setColorFilter(new FlatSVGIcon.ColorFilter(color -> Theme.CYAN));
+        btnAssign.setIcon(iconLink);
+ 
+        Widgets.FlatButton btnEdit   = new Widgets.FlatButton("Modifier", new Color(55,75,140));
+        FlatSVGIcon iconEdit = Widgets.svg("/resources/icons/edit.svg");
+        iconEdit.setColorFilter(new FlatSVGIcon.ColorFilter(color -> Theme.CYAN));
+        btnEdit.setIcon(iconEdit);
+ 
+        Widgets.FlatButton btnDel    = new Widgets.FlatButton("Retirer", Theme.RED);
+        FlatSVGIcon iconDel = Widgets.svg("/resources/icons/trash.svg");
+        iconDel.setColorFilter(new FlatSVGIcon.ColorFilter(color -> Theme.CYAN));
+        btnDel.setIcon(iconDel);
 
         btnAdd.addActionListener(e    -> addMembre());
         btnAssign.addActionListener(e -> assignTaches());
@@ -68,7 +94,7 @@ public class EquipePanel extends JPanel {
 
     // ── Zone cartes ───────────────────────────────────────────
     private JScrollPane buildCardsArea() {
-        cardsPanel = new JPanel(new WrapLayout(FlowLayout.LEFT,12,12));
+        cardsPanel = new JPanel(new Widgets.WrapLayout(FlowLayout.LEFT,12,12));
         cardsPanel.setBackground(Theme.BG_PANEL);
         cardsPanel.setBorder(new EmptyBorder(Theme.GAP_LG,Theme.GAP_MD,Theme.GAP_LG,Theme.GAP_MD));
         JScrollPane sp = Widgets.scroll(cardsPanel);
@@ -80,13 +106,13 @@ public class EquipePanel extends JPanel {
     // ── Panneau détail ────────────────────────────────────────
     private JScrollPane buildDetailArea() {
         detailPanel = new JPanel();
-        detailPanel.setBackground(new Color(18,18,32));
+        detailPanel.setBackground(Theme.BG_PANEL);
         detailPanel.setLayout(new BoxLayout(detailPanel, BoxLayout.Y_AXIS));
         detailPanel.setBorder(new EmptyBorder(Theme.GAP_LG,Theme.GAP_MD,Theme.GAP_LG,Theme.GAP_MD));
         showDetailPlaceholder();
         JScrollPane sp = Widgets.scroll(detailPanel);
         sp.setBorder(new MatteBorder(0,1,0,0,Theme.BORDER));
-        sp.getViewport().setBackground(new Color(18,18,32));
+        sp.getViewport().setBackground(Theme.BG_PANEL);
         sp.setHorizontalScrollBarPolicy(ScrollPaneConstants.HORIZONTAL_SCROLLBAR_NEVER);
         return sp;
     }
@@ -101,7 +127,16 @@ public class EquipePanel extends JPanel {
             long dispo = ms.stream().filter(m->m.getDisponibilite()==Membre.Disponibilite.DISPONIBLE).count();
             lblInfo.setText(ms.size()+" membre(s)  •  "+dispo+" disponible(s)");
             if (ms.isEmpty()) addEmpty(cardsPanel, "Aucun membre — cliquez « Ajouter un membre »");
-            else ms.forEach(m -> cardsPanel.add(buildCard(m)));
+            else {
+                for (Membre m : ms) {
+                    if (!searchQuery.isEmpty()) {
+                        boolean match = m.getNomComplet().toLowerCase().contains(searchQuery)
+                                || m.getRole().getLibelle().toLowerCase().contains(searchQuery);
+                        if (!match) continue;
+                    }
+                    cardsPanel.add(buildCard(m));
+                }
+            }
         }
         cardsPanel.revalidate(); cardsPanel.repaint();
 
@@ -169,30 +204,37 @@ public class EquipePanel extends JPanel {
         detailPanel.add(centeredLabel(m.getRole().toString(), Theme.F_SMALL, Theme.TEXT_SECONDARY));
         detailPanel.add(Box.createVerticalStrut(Theme.GAP_MD));
 
-        Widgets.FlatButton btnEdit = new Widgets.FlatButton("✏  Modifier le profil", new Color(55,75,140));
+        Widgets.FlatButton btnEdit = new Widgets.FlatButton("Modifier le profil", new Color(55,75,140));
+        FlatSVGIcon iconE2 = Widgets.svg("/resources/icons/edit.svg", 14, 14);
+        iconE2.setColorFilter(new FlatSVGIcon.ColorFilter(color -> Color.WHITE));
+        btnEdit.setIcon(iconE2); btnEdit.setIconTextGap(6);
         btnEdit.setAlignmentX(CENTER_ALIGNMENT); btnEdit.setMaximumSize(new Dimension(Integer.MAX_VALUE,32));
         btnEdit.addActionListener(e -> editMembre());
         detailPanel.add(btnEdit);
         detailPanel.add(Box.createVerticalStrut(Theme.GAP_MD));
 
-        sec("📬  Contact");
-        infoRow("Email",  m.getEmail().isEmpty() ? "—" : m.getEmail());
-        infoRow("Tél.",   m.getTelephone().isEmpty() ? "—" : m.getTelephone());
+        sec("Contact", "info.svg");
+        contactRow("Email", m.getEmail().isEmpty() ? "—" : m.getEmail(), "mail",
+            m.getEmail().isEmpty() ? null : () -> openUri("mailto:" + m.getEmail()),
+            new Color(59, 130, 246));
+        contactRow("Tél.", m.getTelephone().isEmpty() ? "—" : m.getTelephone(), "whatsapp",
+            m.getTelephone().isEmpty() ? null : () -> openUri("https://wa.me/" + m.getTelephone().replaceAll("[^0-9+]", "")),
+            new Color(37, 211, 102));
         detailPanel.add(Box.createVerticalStrut(Theme.GAP_SM));
 
-        sec("🟢  Disponibilité");
+        sec("Disponibilité", "info.svg");
         JLabel dispo = new JLabel("●  "+m.getDisponibilite().getLibelle());
         dispo.setFont(Theme.font(Font.BOLD,12)); dispo.setForeground(m.getDisponibilite().getCouleur());
         dispo.setAlignmentX(LEFT_ALIGNMENT); detailPanel.add(dispo);
         detailPanel.add(Box.createVerticalStrut(Theme.GAP_SM));
 
-        sec("⭐  Compétences");
+        sec("Compétences", "edit.svg");
         JLabel comp = new JLabel("<html><div style='width:190px'>"+(m.getCompetences().isEmpty()?"<i>Non renseignées</i>":m.getCompetences())+"</div></html>");
         comp.setFont(Theme.F_SMALL); comp.setForeground(Theme.TEXT_SECONDARY); comp.setAlignmentX(LEFT_ALIGNMENT);
         detailPanel.add(comp);
         detailPanel.add(Box.createVerticalStrut(Theme.GAP_SM));
 
-        sec("📌  Tâches assignées ("+m.getTachesAssignees().size()+")");
+        sec("Tâches assignées ("+m.getTachesAssignees().size()+")", "table.svg");
         if (m.getTachesAssignees().isEmpty()) {
             JLabel none = new JLabel("Aucune tâche assignée"); none.setFont(Theme.F_SMALL);
             none.setForeground(Theme.TEXT_MUTED); none.setAlignmentX(LEFT_ALIGNMENT); detailPanel.add(none);
@@ -255,12 +297,21 @@ public class EquipePanel extends JPanel {
         l.setAlignmentX(CENTER_ALIGNMENT); l.setMaximumSize(new Dimension(Integer.MAX_VALUE,20)); return l;
     }
 
-    private void sec(String text) {
-        JLabel l = new JLabel(text.toUpperCase()); l.setFont(Theme.F_LABEL); l.setForeground(Theme.TEXT_MUTED);
+    private void sec(String text, String iconName) {
+        JLabel l = new JLabel(text.toUpperCase());
+        l.setFont(Theme.font(Font.BOLD, 10)); l.setForeground(Theme.CYAN);
+        
+        if (iconName != null) {
+            FlatSVGIcon icon = Widgets.svg("/resources/icons/" + iconName, 12, 12);
+            icon.setColorFilter(new FlatSVGIcon.ColorFilter(c -> Theme.CYAN));
+            l.setIcon(icon);
+            l.setIconTextGap(6);
+        }
+        
         l.setAlignmentX(LEFT_ALIGNMENT);
-        l.setBorder(new CompoundBorder(new MatteBorder(0,0,1,0,Theme.BORDER),new EmptyBorder(0,0,4,0)));
-        l.setMaximumSize(new Dimension(Integer.MAX_VALUE,20));
-        detailPanel.add(l); detailPanel.add(Box.createVerticalStrut(4));
+        l.setBorder(new CompoundBorder(new MatteBorder(0,0,1,0,Theme.BORDER),new EmptyBorder(4,0,4,0)));
+        l.setMaximumSize(new Dimension(Integer.MAX_VALUE,24));
+        detailPanel.add(l); detailPanel.add(Box.createVerticalStrut(Theme.GAP_SM));
     }
 
     private void infoRow(String k, String v) {
@@ -272,34 +323,55 @@ public class EquipePanel extends JPanel {
         detailPanel.add(row); detailPanel.add(Box.createVerticalStrut(3));
     }
 
+    private void contactRow(String k, String v, String iconName, Runnable action, Color btnColor) {
+        JPanel row = new JPanel(new BorderLayout(8,0)); row.setOpaque(false); row.setAlignmentX(LEFT_ALIGNMENT);
+        row.setMaximumSize(new Dimension(Integer.MAX_VALUE,26));
+
+        JLabel kl = new JLabel(k); kl.setFont(Theme.F_LABEL); kl.setForeground(Theme.TEXT_MUTED); kl.setPreferredSize(new Dimension(42,18));
+        JLabel vl = new JLabel(v); vl.setFont(Theme.F_SMALL); vl.setForeground(Theme.TEXT_PRIMARY);
+
+        row.add(kl, BorderLayout.WEST);
+        row.add(vl, BorderLayout.CENTER);
+
+        if (action != null) {
+            JButton btn = new JButton() {
+                @Override protected void paintComponent(Graphics g) {
+                    Graphics2D g2 = (Graphics2D)g.create();
+                    g2.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
+                    Color bg = getModel().isRollover()
+                        ? new Color(btnColor.getRed(), btnColor.getGreen(), btnColor.getBlue(), 55)
+                        : new Color(btnColor.getRed(), btnColor.getGreen(), btnColor.getBlue(), 28);
+                    g2.setColor(bg); g2.fillRoundRect(0,0,getWidth(),getHeight(),8,8);
+                    g2.dispose(); super.paintComponent(g);
+                }
+            };
+            FlatSVGIcon icon = Widgets.svg("/resources/icons/" + iconName + ".svg", 13, 13);
+            icon.setColorFilter(new FlatSVGIcon.ColorFilter(c -> btnColor));
+            btn.setIcon(icon);
+            btn.setPreferredSize(new Dimension(26, 22));
+            btn.setFocusPainted(false); btn.setBorderPainted(false); btn.setContentAreaFilled(false);
+            btn.setCursor(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR));
+            btn.setToolTipText("Ouvrir " + k);
+            btn.addActionListener(e -> action.run());
+            btn.setOpaque(false);
+            row.add(btn, BorderLayout.EAST);
+        }
+
+        detailPanel.add(row); detailPanel.add(Box.createVerticalStrut(4));
+    }
+
+    private void openUri(String uri) {
+        try {
+            Desktop.getDesktop().browse(new URI(uri));
+        } catch (Exception ex) {
+            Toast.warn("Impossible d'ouvrir : " + uri);
+        }
+    }
+
     private void addEmpty(JPanel p, String msg) {
         JLabel l = new JLabel(msg); l.setForeground(Theme.TEXT_MUTED); l.setFont(Theme.F_SMALL);
         l.setBorder(new EmptyBorder(Theme.GAP_XL,0,0,0));
         p.add(l);
     }
 
-    // ── WrapLayout ────────────────────────────────────────────
-    static class WrapLayout extends FlowLayout {
-        WrapLayout(int align,int h,int v){super(align,h,v);}
-        @Override public Dimension preferredLayoutSize(Container t){ return layout(t,true); }
-        @Override public Dimension minimumLayoutSize(Container t)  { return layout(t,false); }
-        private Dimension layout(Container t,boolean pref){
-            synchronized(t.getTreeLock()){
-                int tw=t.getSize().width; if(tw==0) tw=Integer.MAX_VALUE;
-                Insets ins=t.getInsets();
-                int max=tw-(ins.left+ins.right+getHgap()*2);
-                Dimension dim=new Dimension(0,0);
-                int rw=0,rh=0;
-                for(int i=0;i<t.getComponentCount();i++){
-                    Component c=t.getComponent(i); if(!c.isVisible()) continue;
-                    Dimension d=pref?c.getPreferredSize():c.getMinimumSize();
-                    if(rw+d.width>max){ dim.width=Math.max(dim.width,rw); dim.height+=rh+getVgap(); rw=0;rh=0; }
-                    rw+=d.width+getHgap(); rh=Math.max(rh,d.height);
-                }
-                dim.width=Math.max(dim.width,rw);
-                dim.height+=rh+ins.top+ins.bottom+getVgap()*2;
-                return dim;
-            }
-        }
-    }
 }

@@ -3,6 +3,7 @@ package gestion.ui;
 import gestion.model.*;
 import gestion.util.Theme;
 import gestion.util.Widgets;
+import com.formdev.flatlaf.extras.FlatSVGIcon;
 
 import javax.swing.*;
 import javax.swing.border.*;
@@ -92,7 +93,10 @@ public class AssignTachesDialog extends JDialog {
         rightBtns.setBackground(Theme.BG_TOPBAR);
         Widgets.FlatButton cancel = new Widgets.FlatButton("Annuler", new Color(48,48,72));
         cancel.addActionListener(e->dispose());
-        Widgets.FlatButton confirm = new Widgets.FlatButton("✓  Confirmer", Theme.ACCENT);
+        Widgets.FlatButton confirm = new Widgets.FlatButton("Confirmer", Theme.ACCENT);
+        FlatSVGIcon iconC = Widgets.svg("/resources/icons/check.svg", 14, 14);
+        iconC.setColorFilter(new FlatSVGIcon.ColorFilter(c -> Color.WHITE));
+        confirm.setIcon(iconC); confirm.setIconTextGap(6);
         confirm.addActionListener(e->handleConfirm());
         rightBtns.add(cancel); rightBtns.add(confirm);
         foot.add(rightBtns, BorderLayout.EAST);

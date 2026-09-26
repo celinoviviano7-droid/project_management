@@ -2,6 +2,7 @@ package gestion.ui;
 
 import gestion.model.*;
 import gestion.util.*;
+import com.formdev.flatlaf.extras.FlatSVGIcon;
 
 import javax.swing.*;
 import javax.swing.border.*;
@@ -21,6 +22,7 @@ public class JalonsPanel extends JPanel {
     private Projet  projet;
     private Runnable onUpdate;
     private Jalon   selected;
+    private String  searchQuery = "";
 
     // ── UI ────────────────────────────────────────────────────
     private JPanel listPanel;
@@ -28,7 +30,6 @@ public class JalonsPanel extends JPanel {
 
     // Détail droit
     private JPanel detailPanel;
-    private JLabel dtNom, dtDate, dtType, dtStatut, dtDesc, dtTache;
 
     public JalonsPanel(Runnable onUpdate) {
         this.onUpdate = onUpdate;
@@ -39,23 +40,19 @@ public class JalonsPanel extends JPanel {
 
     public void setProjet(Projet p) { projet = p; selected = null; refresh(); }
 
-    // ─────────────────────────────────────────────────────────
-    //  Construction
-    // ─────────────────────────────────────────────────────────
     private void build() {
         add(buildToolbar(), BorderLayout.NORTH);
 
-        // Split : liste à gauche, détail à droite
         JSplitPane split = new JSplitPane(JSplitPane.HORIZONTAL_SPLIT,
             buildListArea(), buildDetailArea());
-        split.setDividerLocation(680);
+        split.setDividerLocation(850);
+        split.setResizeWeight(0.7);
         split.setDividerSize(1);
         split.setBackground(Theme.BORDER);
         split.setBorder(null);
         add(split, BorderLayout.CENTER);
     }
 
-    // ── Toolbar ───────────────────────────────────────────────
     private JPanel buildToolbar() {
         JPanel bar = new JPanel(new BorderLayout());
         bar.setBackground(Theme.BG_CARD);
@@ -66,14 +63,30 @@ public class JalonsPanel extends JPanel {
         JPanel left = new JPanel(new FlowLayout(FlowLayout.LEFT, Theme.GAP_SM, 0));
         left.setOpaque(false);
 
-        Widgets.FlatButton btnAdd  = new Widgets.FlatButton("◆  Nouveau jalon", Theme.GOLD);
+        JTextField searchField = Widgets.searchField("Rechercher un jalon...", q -> {
+            searchQuery = q.toLowerCase();
+            refresh();
+        });
+        left.add(searchField);
+        left.add(Box.createHorizontalStrut(Theme.GAP_SM));
+
+        Widgets.FlatButton btnAdd  = new Widgets.FlatButton("Nouveau jalon", Theme.GOLD);
+        FlatSVGIcon iconM = Widgets.svg("/resources/icons/milestone.svg");
+        iconM.setColorFilter(new FlatSVGIcon.ColorFilter(color -> Theme.CYAN));
+        btnAdd.setIcon(iconM);
         btnAdd.setForeground(new Color(18,15,0));
         btnAdd.addActionListener(e -> addJalon());
 
-        Widgets.FlatButton btnEdit = new Widgets.FlatButton("✏  Modifier", new Color(55,75,140));
+        Widgets.FlatButton btnEdit = new Widgets.FlatButton("Modifier", new Color(55,75,140));
+        FlatSVGIcon iconE = Widgets.svg("/resources/icons/edit.svg");
+        iconE.setColorFilter(new FlatSVGIcon.ColorFilter(color -> Theme.CYAN));
+        btnEdit.setIcon(iconE);
         btnEdit.addActionListener(e -> editJalon());
 
-        Widgets.FlatButton btnDel  = new Widgets.FlatButton("✕  Supprimer", Theme.RED);
+        Widgets.FlatButton btnDel  = new Widgets.FlatButton("Supprimer", Theme.RED);
+        FlatSVGIcon iconD = Widgets.svg("/resources/icons/trash.svg");
+        iconD.setColorFilter(new FlatSVGIcon.ColorFilter(color -> Theme.CYAN));
+        btnDel.setIcon(iconD);
         btnDel.addActionListener(e -> deleteJalon());
 
         lblInfo = new JLabel("");
@@ -83,8 +96,10 @@ public class JalonsPanel extends JPanel {
         left.add(Box.createHorizontalStrut(Theme.GAP_SM)); left.add(lblInfo);
         bar.add(left, BorderLayout.WEST);
 
-        // Aide contextuelle
-        JLabel hint = new JLabel("💡 Un jalon est un événement ponctuel — livraison, validation, décision clé");
+        JLabel hint = new JLabel("Un jalon est un événement ponctuel — livraison, validation, décision clé");
+        FlatSVGIcon iconH = Widgets.svg("/resources/icons/info.svg", 12, 12);
+        iconH.setColorFilter(new FlatSVGIcon.ColorFilter(c -> Theme.TEXT_MUTED));
+        hint.setIcon(iconH); hint.setIconTextGap(6);
         hint.setFont(Theme.F_TINY); hint.setForeground(Theme.TEXT_MUTED);
         JPanel right = new JPanel(new FlowLayout(FlowLayout.RIGHT,0,0)); right.setOpaque(false);
         right.add(hint);
@@ -92,7 +107,6 @@ public class JalonsPanel extends JPanel {
         return bar;
     }
 
-    // ── Liste jalons ─────────────────────────────────────────
     private JScrollPane buildListArea() {
         listPanel = new JPanel();
         listPanel.setBackground(Theme.BG_PANEL);
@@ -104,10 +118,9 @@ public class JalonsPanel extends JPanel {
         return sp;
     }
 
-    // ── Panneau détail ────────────────────────────────────────
     private JScrollPane buildDetailArea() {
         detailPanel = new JPanel();
-        detailPanel.setBackground(new Color(18,18,32));
+        detailPanel.setBackground(Theme.BG_PANEL);
         detailPanel.setLayout(new BoxLayout(detailPanel, BoxLayout.Y_AXIS));
         detailPanel.setBorder(new EmptyBorder(Theme.GAP_LG, Theme.GAP_MD, Theme.GAP_LG, Theme.GAP_MD));
 
@@ -115,50 +128,64 @@ public class JalonsPanel extends JPanel {
 
         JScrollPane sp = Widgets.scroll(detailPanel);
         sp.setBorder(new MatteBorder(0,1,0,0,Theme.BORDER));
-        sp.getViewport().setBackground(new Color(18,18,32));
+        sp.getViewport().setBackground(Theme.BG_PANEL);
         sp.setHorizontalScrollBarPolicy(ScrollPaneConstants.HORIZONTAL_SCROLLBAR_NEVER);
         return sp;
     }
 
-    // ─────────────────────────────────────────────────────────
-    //  Refresh
-    // ─────────────────────────────────────────────────────────
     public void refresh() {
         listPanel.removeAll();
-
         if (projet == null) {
             addEmpty("Sélectionnez un projet pour voir ses jalons");
         } else {
             List<Jalon> jalons = projet.getJalons();
             long atteints = jalons.stream().filter(j->j.getStatut()==Jalon.Statut.ATTEINT).count();
             long manques  = jalons.stream().filter(j->j.getStatut()==Jalon.Statut.MANQUE).count();
-            lblInfo.setText(jalons.size()+" jalon(s)  •  "+atteints+" atteint(s)"+(manques>0?"  •  ⚠ "+manques+" manqué(s)":""));
+            lblInfo.setText(jalons.size()+" jalon(s)  •  "+atteints+" atteint(s)");
+            if (manques > 0) {
+                lblInfo.setText(lblInfo.getText() + "  •  " + manques + " manqué(s)");
+                lblInfo.setForeground(Theme.RED);
+            } else {
+                lblInfo.setForeground(Theme.TEXT_MUTED);
+            }
 
             if (jalons.isEmpty()) {
                 addEmpty("Aucun jalon — cliquez « Nouveau jalon »");
             } else {
-                // Regrouper : passés / à venir
-                List<Jalon> passes = jalons.stream()
-                    .filter(j -> j.getDate().isBefore(LocalDate.now()))
-                    .sorted(Comparator.comparing(Jalon::getDate).reversed())
-                    .collect(Collectors.toList());
-                List<Jalon> avenir = jalons.stream()
-                    .filter(j -> !j.getDate().isBefore(LocalDate.now()))
-                    .sorted(Comparator.comparing(Jalon::getDate))
-                    .collect(Collectors.toList());
-
-                if (!avenir.isEmpty()) {
-                    listPanel.add(groupHeader("À venir", avenir.size()));
-                    for (Jalon j : avenir) listPanel.add(buildJalonRow(j));
-                    listPanel.add(Box.createVerticalStrut(Theme.GAP_MD));
+                List<Jalon> filtered = jalons;
+                if (!searchQuery.isEmpty()) {
+                    filtered = jalons.stream()
+                        .filter(j -> j.getNom().toLowerCase().contains(searchQuery)
+                                || j.getType().getLibelle().toLowerCase().contains(searchQuery))
+                        .collect(Collectors.toList());
                 }
-                if (!passes.isEmpty()) {
-                    listPanel.add(groupHeader("Passés", passes.size()));
-                    for (Jalon j : passes) listPanel.add(buildJalonRow(j));
+
+                if (filtered.isEmpty() && !searchQuery.isEmpty()) {
+                    addEmpty("Aucun jalon ne correspond à votre recherche");
+                } else if (filtered.isEmpty()) {
+                    addEmpty("Aucun jalon — cliquez « Nouveau jalon »");
+                } else {
+                    List<Jalon> passes = filtered.stream()
+                        .filter(j -> j.getDate().isBefore(LocalDate.now()))
+                        .sorted(Comparator.comparing(Jalon::getDate).reversed())
+                        .collect(Collectors.toList());
+                    List<Jalon> avenir = filtered.stream()
+                        .filter(j -> !j.getDate().isBefore(LocalDate.now()))
+                        .sorted(Comparator.comparing(Jalon::getDate))
+                        .collect(Collectors.toList());
+
+                    if (!avenir.isEmpty()) {
+                        listPanel.add(groupHeader("À venir", avenir.size()));
+                        for (Jalon j : avenir) listPanel.add(buildJalonRow(j));
+                        listPanel.add(Box.createVerticalStrut(Theme.GAP_MD));
+                    }
+                    if (!passes.isEmpty()) {
+                        listPanel.add(groupHeader("Passés", passes.size()));
+                        for (Jalon j : passes) listPanel.add(buildJalonRow(j));
+                    }
                 }
             }
         }
-
         listPanel.revalidate(); listPanel.repaint();
 
         if (selected != null && projet != null && projet.getJalons().contains(selected))
@@ -167,7 +194,6 @@ public class JalonsPanel extends JPanel {
             showDetailPlaceholder();
     }
 
-    // ── Carte jalon ───────────────────────────────────────────
     private JPanel buildJalonRow(Jalon j) {
         boolean sel = j == selected;
         DateTimeFormatter fmt = DateTimeFormatter.ofPattern("dd MMM yyyy");
@@ -183,7 +209,6 @@ public class JalonsPanel extends JPanel {
         row.setAlignmentX(LEFT_ALIGNMENT);
         row.setCursor(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR));
 
-        // ── Losange icône ──
         JPanel diamond = new JPanel() {
             @Override protected void paintComponent(Graphics g) {
                 Graphics2D g2 = (Graphics2D)g.create();
@@ -195,7 +220,6 @@ public class JalonsPanel extends JPanel {
                 if(j.getStatut()==Jalon.Statut.ATTEINT){ g2.setColor(c); g2.fillPolygon(xs,ys,4); }
                 g2.setColor(c); g2.setStroke(new BasicStroke(1.8f)); g2.drawPolygon(xs,ys,4);
                 if(j.getStatut()==Jalon.Statut.ATTEINT){ g2.setColor(Color.WHITE); g2.fillOval(cx-3,cy-3,6,6); }
-                // Icône type
                 g2.setFont(Theme.font(Font.PLAIN,10)); g2.setColor(c);
                 String ic=j.getType().getIcone();
                 FontMetrics fm=g2.getFontMetrics();
@@ -205,7 +229,6 @@ public class JalonsPanel extends JPanel {
         };
         diamond.setPreferredSize(new Dimension(36,44)); diamond.setOpaque(false);
 
-        // ── Infos ──
         JPanel info = new JPanel(new BorderLayout(0, 3)); info.setOpaque(false);
         JLabel nom = new JLabel(j.getNom());
         nom.setFont(Theme.font(Font.BOLD, 12));
@@ -221,7 +244,6 @@ public class JalonsPanel extends JPanel {
 
         info.add(nom, BorderLayout.NORTH); info.add(subRow, BorderLayout.SOUTH);
 
-        // ── Distance ──
         long daysLeft = java.time.temporal.ChronoUnit.DAYS.between(LocalDate.now(), j.getDate());
         String dist = daysLeft == 0 ? "Aujourd'hui !"
             : daysLeft > 0 ? "Dans "+daysLeft+" j"
@@ -241,17 +263,12 @@ public class JalonsPanel extends JPanel {
 
         row.addMouseListener(new MouseAdapter(){
             public void mouseClicked(MouseEvent e) { selected = j; refresh(); }
-            public void mouseEntered(MouseEvent e) {
-                if(j!=selected){ row.setBackground(Theme.BG_CARD_HOVER); }
-            }
-            public void mouseExited(MouseEvent e) {
-                if(j!=selected){ row.setBackground(Theme.BG_CARD); }
-            }
+            public void mouseEntered(MouseEvent e) { if(j!=selected){ row.setBackground(Theme.BG_CARD_HOVER); } }
+            public void mouseExited(MouseEvent e) { if(j!=selected){ row.setBackground(Theme.BG_CARD); } }
         });
         return row;
     }
 
-    // ── Détail ────────────────────────────────────────────────
     private void showDetailPlaceholder() {
         detailPanel.removeAll();
         JLabel l = new JLabel("<html><center>Cliquez sur un jalon<br>pour voir ses détails</center></html>");
@@ -267,7 +284,6 @@ public class JalonsPanel extends JPanel {
         detailPanel.removeAll();
         DateTimeFormatter fmt = DateTimeFormatter.ofPattern("dd MMMM yyyy");
 
-        // ── Grand losange ──
         JPanel bigDiamond = new JPanel() {
             @Override protected void paintComponent(Graphics g) {
                 Graphics2D g2 = (Graphics2D)g.create();
@@ -295,7 +311,6 @@ public class JalonsPanel extends JPanel {
         detailPanel.add(dw);
         detailPanel.add(Box.createVerticalStrut(Theme.GAP_SM));
 
-        // Nom + badges
         cLabel(j.getNom(), Theme.font(Font.BOLD,14), Theme.TEXT_PRIMARY);
         JPanel badges = new JPanel(new FlowLayout(FlowLayout.CENTER,4,0)); badges.setOpaque(false); badges.setAlignmentX(CENTER_ALIGNMENT);
         badges.add(new Widgets.Badge(j.getStatut().getLibelle(), j.getStatut().getCouleur()));
@@ -303,29 +318,29 @@ public class JalonsPanel extends JPanel {
         detailPanel.add(badges);
         detailPanel.add(Box.createVerticalStrut(Theme.GAP_MD));
 
-        // Bouton modifier
-        Widgets.FlatButton btnEdit = new Widgets.FlatButton("✏  Modifier ce jalon", new Color(55,75,140));
+        Widgets.FlatButton btnEdit = new Widgets.FlatButton("Modifier ce jalon", new Color(55,75,140));
+        FlatSVGIcon iconE2 = Widgets.svg("/resources/icons/edit.svg");
+        iconE2.setColorFilter(new FlatSVGIcon.ColorFilter(color -> Theme.CYAN));
+        btnEdit.setIcon(iconE2);
         btnEdit.setAlignmentX(CENTER_ALIGNMENT); btnEdit.setMaximumSize(new Dimension(Integer.MAX_VALUE,32));
         btnEdit.addActionListener(e -> editJalon());
         detailPanel.add(btnEdit);
         detailPanel.add(Box.createVerticalStrut(Theme.GAP_LG));
 
-        // Infos
-        sec("📅  Date");
+        sec("Date");
         infoRow("Date",   j.getDate().format(fmt));
         long dl = java.time.temporal.ChronoUnit.DAYS.between(LocalDate.now(), j.getDate());
         String dist = dl==0?"Aujourd'hui !":dl>0?"Dans "+dl+" jours":"Il y a "+Math.abs(dl)+" jours";
         infoRow("Délai",  dist);
         detailPanel.add(Box.createVerticalStrut(Theme.GAP_SM));
 
-        sec("🔖  Classification");
+        sec("Classification");
         infoRow("Type",   j.getType().getIcone()+"  "+j.getType().getLibelle());
         infoRow("Statut", j.getStatut().getLibelle());
         detailPanel.add(Box.createVerticalStrut(Theme.GAP_SM));
 
-        // Tâche liée
         if (j.getTacheLieeId() > 0 && projet != null) {
-            sec("🔗  Tâche liée");
+            sec("Tâche liée");
             projet.getTache(j.getTacheLieeId()).ifPresent(t -> {
                 JPanel trow = new JPanel(new BorderLayout(6,0)); trow.setOpaque(false);
                 trow.setAlignmentX(LEFT_ALIGNMENT); trow.setMaximumSize(new Dimension(Integer.MAX_VALUE,22));
@@ -338,9 +353,8 @@ public class JalonsPanel extends JPanel {
             detailPanel.add(Box.createVerticalStrut(Theme.GAP_SM));
         }
 
-        // Description
         if (!j.getDescription().isEmpty()) {
-            sec("📝  Description");
+            sec("Description");
             JLabel desc = new JLabel("<html><div style='width:210px'>"+j.getDescription()+"</div></html>");
             desc.setFont(Theme.F_SMALL); desc.setForeground(Theme.TEXT_SECONDARY);
             desc.setAlignmentX(LEFT_ALIGNMENT);
@@ -350,9 +364,6 @@ public class JalonsPanel extends JPanel {
         detailPanel.revalidate(); detailPanel.repaint();
     }
 
-    // ─────────────────────────────────────────────────────────
-    //  Actions
-    // ─────────────────────────────────────────────────────────
     private void addJalon() {
         if (projet==null) { Toast.warn("Sélectionnez un projet d'abord"); return; }
         Frame owner = (Frame)SwingUtilities.getWindowAncestor(this);
@@ -395,9 +406,6 @@ public class JalonsPanel extends JPanel {
         }
     }
 
-    // ─────────────────────────────────────────────────────────
-    //  Helpers UI
-    // ─────────────────────────────────────────────────────────
     private JPanel groupHeader(String title, int count) {
         JPanel p = new JPanel(new BorderLayout(8,0)); p.setOpaque(false);
         p.setAlignmentX(LEFT_ALIGNMENT); p.setMaximumSize(new Dimension(Integer.MAX_VALUE,26));

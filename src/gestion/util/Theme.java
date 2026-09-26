@@ -32,8 +32,8 @@ public final class Theme {
 
     // ── Textes ───────────────────────────────────────────────
     public static final Color TEXT_PRIMARY   = new Color(228, 224, 248);
-    public static final Color TEXT_SECONDARY = new Color(145, 135, 172);
-    public static final Color TEXT_MUTED     = new Color( 72,  68,  96);
+    public static final Color TEXT_SECONDARY = new Color(180, 175, 200); // Brightened from (145, 135, 172)
+    public static final Color TEXT_MUTED     = new Color(120, 115, 145); // Brightened from (72, 68, 96)
 
     // ── Bordures ─────────────────────────────────────────────
     public static final Color BORDER         = new Color(34, 34, 58);
@@ -63,12 +63,12 @@ public final class Theme {
     public static Font font(int style, int size) {
         return new Font("Segoe UI", style, size);
     }
-    public static final Font F_TITLE    = font(Font.BOLD,   20);
-    public static final Font F_SUBTITLE = font(Font.BOLD,   13);
-    public static final Font F_BODY     = font(Font.PLAIN,  12);
-    public static final Font F_SMALL    = font(Font.PLAIN,  11);
-    public static final Font F_TINY     = font(Font.PLAIN,  10);
-    public static final Font F_LABEL    = font(Font.BOLD,   10);
+    public static final Font F_TITLE    = font(Font.BOLD,   21);
+    public static final Font F_SUBTITLE = font(Font.BOLD,   14);
+    public static final Font F_BODY     = font(Font.PLAIN,  13);
+    public static final Font F_SMALL    = font(Font.PLAIN,  12);
+    public static final Font F_TINY     = font(Font.PLAIN,  11);
+    public static final Font F_LABEL    = font(Font.BOLD,   11);
 
     // ── Espacements ──────────────────────────────────────────
     public static final int GAP_XS = 4;
